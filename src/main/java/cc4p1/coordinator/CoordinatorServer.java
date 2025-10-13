@@ -25,7 +25,7 @@ import java.util.concurrent.Executors;
 public class CoordinatorServer {
 
     private static final int PORT = 8080;
-    private static final int NUM_PARTITIONS = 6;
+    private static final int NUM_PARTITIONS = 3;
     private static final RoutingTable routingTable = new RoutingTable(NUM_PARTITIONS);
 
     public static void main(String[] args) throws IOException {
