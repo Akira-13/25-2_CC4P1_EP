@@ -29,6 +29,8 @@ public class ClientChatGUI extends javax.swing.JFrame {
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
 
+        jScrollPane4 = new javax.swing.JScrollPane();
+        jTable1 = new javax.swing.JTable();
         jScrollPane1 = new javax.swing.JScrollPane();
         ScreenTA = new javax.swing.JTextArea();
         jScrollPane2 = new javax.swing.JScrollPane();
@@ -36,8 +38,24 @@ public class ClientChatGUI extends javax.swing.JFrame {
         SendBtn = new javax.swing.JButton();
         jScrollPane3 = new javax.swing.JScrollPane();
         ResponseTA = new javax.swing.JTextArea();
+        jScrollPane5 = new javax.swing.JScrollPane();
+        jTable2 = new javax.swing.JTable();
+
+        jTable1.setModel(new javax.swing.table.DefaultTableModel(
+            new Object [][] {
+                {null, null, null, null},
+                {null, null, null, null},
+                {null, null, null, null},
+                {null, null, null, null}
+            },
+            new String [] {
+                "Title 1", "Title 2", "Title 3", "Title 4"
+            }
+        ));
+        jScrollPane4.setViewportView(jTable1);
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
+        setTitle("Chat Cliente");
 
         ScreenTA.setEditable(false);
         ScreenTA.setColumns(20);
@@ -66,33 +84,56 @@ public class ClientChatGUI extends javax.swing.JFrame {
         ResponseTA.setRows(5);
         jScrollPane3.setViewportView(ResponseTA);
 
+        jTable2.setModel(new javax.swing.table.DefaultTableModel(
+            new Object [][] {
+                {null, null, null},
+                {null, null, null},
+                {null, null, null},
+                {null, null, null},
+                {null, null, null},
+                {null, null, null},
+                {null, null, null},
+                {null, null, null},
+                {null, null, null},
+                {null, null, null}
+            },
+            new String [] {
+                "Title 1", "Title 2", "Title 3"
+            }
+        ));
+        jTable2.setEnabled(false);
+        jScrollPane5.setViewportView(jTable2);
+
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
-                .addGap(33, 33, 33)
+                .addGap(23, 23, 23)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                    .addComponent(jScrollPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 331, Short.MAX_VALUE)
+                    .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 0, Short.MAX_VALUE)
                     .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
-                        .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 0, Short.MAX_VALUE)
+                        .addComponent(jScrollPane2, javax.swing.GroupLayout.DEFAULT_SIZE, 284, Short.MAX_VALUE)
                         .addGap(18, 18, 18)
                         .addComponent(SendBtn))
+                    .addComponent(jScrollPane1, javax.swing.GroupLayout.Alignment.TRAILING)
                     .addComponent(jScrollPane3))
-                .addContainerGap(32, Short.MAX_VALUE))
+                .addContainerGap(29, Short.MAX_VALUE))
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
-                .addGap(24, 24, 24)
-                .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 203, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                    .addComponent(SendBtn, javax.swing.GroupLayout.DEFAULT_SIZE, 58, Short.MAX_VALUE)
-                    .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 0, Short.MAX_VALUE))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jScrollPane3, javax.swing.GroupLayout.PREFERRED_SIZE, 130, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(21, Short.MAX_VALUE))
+                .addGap(18, 18, 18)
+                .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 193, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(18, 18, 18)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 58, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(SendBtn, javax.swing.GroupLayout.PREFERRED_SIZE, 58, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGap(12, 12, 12)
+                .addComponent(jScrollPane3, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(18, 18, 18)
+                .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 154, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addContainerGap(24, Short.MAX_VALUE))
         );
 
         pack();
@@ -100,6 +141,11 @@ public class ClientChatGUI extends javax.swing.JFrame {
 
     private void SendBtnActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_SendBtnActionPerformed
         String clientMessage = MessagesTA.getText().trim();
+        
+        // Los mensajes enviados por chat se manejan por palabras clave para simular una IA jejeje:
+        // "saldo" + "id" -> consulta los datos de cuenta especificada
+        // "transacciones" + "id" -> consulta las transacciones de la cuenta especificada
+        // "prestamos" + "id" -> consulta los prestamos de la cuenta especificada
         
         if(!clientMessage.isEmpty()){
             
@@ -132,20 +178,50 @@ public class ClientChatGUI extends javax.swing.JFrame {
         
         message = message.toLowerCase();
         
+        String response = "";
+        
         if (message.contains("saldo")) {
             ScreenTA.append("Chat banco: Imprimiendo saldo de la cuenta " + idAccount + "\n");
-            return HttpHandler.sendGet("http://localhost:8080/consultar_cuenta?id=" + idAccount);
+            response = HttpHandler.sendGet("http://localhost:8080/consultar_cuenta?id=" + idAccount);
+            response = JsonResponseProcessor(response, "saldo");
+            response = "El saldo de la cuenta " + idAccount + " es " + response;
+            
         } else if (message.contains("transaccion") || message.contains("transacciones")) {
             ScreenTA.append("Chat banco: Imprimiendo transacciones de la cuenta " + idAccount + "\n");
-            return HttpHandler.sendGet("http://localhost:8080/consultar_transacciones?id=" + idAccount);
+            response = HttpHandler.sendGet("http://localhost:8080/consultar_transacciones?id=" + idAccount);
+            
         } else if (message.contains("prestamo") || message.contains("préstamo") || message.contains("prestamos")) {
             ScreenTA.append("Chat banco: Imprimiendo lista de préstamos de la cuenta " + idAccount + "\n");
-            return HttpHandler.sendGet("http://localhost:8080/consultar_prestamos?id=" + idAccount);
+            response = HttpHandler.sendGet("http://localhost:8080/consultar_prestamos?id=" + idAccount);
+            
         } else {
             ScreenTA.append("Chat banco: No reconozco la solicitud. Prueba con palabras como 'saldo', 'transacciones' o 'préstamos'.\n");            
-            return "No se pudo realizar la consulta";
+            response = "No se pudo realizar la consulta";
         }
         
+        return response;
+    }
+    
+    public String JsonResponseProcessor(String jsonText, String type){
+        String response = "";
+        
+        switch(type){
+            case "saldo":
+                // Extraemos el valor del "saldo"
+                int saldoIndex = jsonText.indexOf("\"saldo\":");
+                int endIndex = jsonText.indexOf("}", saldoIndex);
+                String saldo = jsonText.substring(saldoIndex + 9, endIndex - 1).replace("\"", "").trim();
+                response = saldo;
+                break;
+            case "transaccion":
+                break;
+            case "prestamo":
+                break;
+            default:
+                break;
+        }
+        
+        return response;
     }
     
     /**
@@ -160,5 +236,9 @@ public class ClientChatGUI extends javax.swing.JFrame {
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JScrollPane jScrollPane2;
     private javax.swing.JScrollPane jScrollPane3;
+    private javax.swing.JScrollPane jScrollPane4;
+    private javax.swing.JScrollPane jScrollPane5;
+    private javax.swing.JTable jTable1;
+    private javax.swing.JTable jTable2;
     // End of variables declaration//GEN-END:variables
 }
