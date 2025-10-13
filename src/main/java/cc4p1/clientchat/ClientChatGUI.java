@@ -142,7 +142,7 @@ public class ClientChatGUI extends javax.swing.JFrame {
             ScreenTA.append("Chat banco: Imprimiendo lista de préstamos de la cuenta " + idAccount + "\n");
             return HttpHandler.sendGet("http://localhost:8080/consultar_prestamos?id=" + idAccount);
         } else {
-            ScreenTA.append("Chat banco: No reconozco la solicitud. Prueba con palabras como 'saldo', 'transacciones' o 'préstamos'.\n");
+            ScreenTA.append("Chat banco: No reconozco la solicitud. Prueba con palabras como 'saldo', 'transacciones' o 'préstamos'.\n");            
             return "No se pudo realizar la consulta";
         }
         
