@@ -133,16 +133,16 @@ public class ClientChatGUI extends javax.swing.JFrame {
         message = message.toLowerCase();
         
         if (message.contains("saldo")) {
-            ScreenTA.append("Chat banco: Imprimiendo saldo de la cuenta " + idAccount);
-            return HttpHandler.sendGet("http://localhost:8080/consultar_saldo?id=" + idAccount);
+            ScreenTA.append("Chat banco: Imprimiendo saldo de la cuenta " + idAccount + "\n");
+            return HttpHandler.sendGet("http://localhost:8080/consultar_cuenta?id=" + idAccount);
         } else if (message.contains("transaccion") || message.contains("transacciones")) {
-            ScreenTA.append("Chat banco: Imprimiendo transacciones de la cuenta " + idAccount);
+            ScreenTA.append("Chat banco: Imprimiendo transacciones de la cuenta " + idAccount + "\n");
             return HttpHandler.sendGet("http://localhost:8080/consultar_transacciones?id=" + idAccount);
         } else if (message.contains("prestamo") || message.contains("préstamo") || message.contains("prestamos")) {
-            ScreenTA.append("Chat banco: Imprimiendo lista de préstamos de la cuenta " + idAccount);
+            ScreenTA.append("Chat banco: Imprimiendo lista de préstamos de la cuenta " + idAccount + "\n");
             return HttpHandler.sendGet("http://localhost:8080/consultar_prestamos?id=" + idAccount);
         } else {
-            ScreenTA.append("Chat banco: No reconozco la solicitud. Prueba con palabras como 'saldo', 'transacciones' o 'préstamos'.");
+            ScreenTA.append("Chat banco: No reconozco la solicitud. Prueba con palabras como 'saldo', 'transacciones' o 'préstamos'.\n");
             return "No se pudo realizar la consulta";
         }
         
