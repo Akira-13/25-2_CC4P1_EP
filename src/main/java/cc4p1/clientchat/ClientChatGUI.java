@@ -4,6 +4,9 @@
  */
 package cc4p1.clientchat;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 /**
  *
  * @author Albert
@@ -32,7 +35,7 @@ public class ClientChatGUI extends javax.swing.JFrame {
         MessagesTA = new javax.swing.JTextArea();
         SendBtn = new javax.swing.JButton();
         jScrollPane3 = new javax.swing.JScrollPane();
-        jTextArea1 = new javax.swing.JTextArea();
+        ResponseTA = new javax.swing.JTextArea();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -51,12 +54,17 @@ public class ClientChatGUI extends javax.swing.JFrame {
         SendBtn.setFont(new java.awt.Font("Verdana", 0, 12)); // NOI18N
         SendBtn.setText("Send");
         SendBtn.setFocusPainted(false);
+        SendBtn.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                SendBtnActionPerformed(evt);
+            }
+        });
 
-        jTextArea1.setEditable(false);
-        jTextArea1.setColumns(20);
-        jTextArea1.setFont(new java.awt.Font("Verdana", 0, 12)); // NOI18N
-        jTextArea1.setRows(5);
-        jScrollPane3.setViewportView(jTextArea1);
+        ResponseTA.setEditable(false);
+        ResponseTA.setColumns(20);
+        ResponseTA.setFont(new java.awt.Font("Verdana", 0, 12)); // NOI18N
+        ResponseTA.setRows(5);
+        jScrollPane3.setViewportView(ResponseTA);
 
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
@@ -90,17 +98,67 @@ public class ClientChatGUI extends javax.swing.JFrame {
         pack();
     }// </editor-fold>//GEN-END:initComponents
 
+    private void SendBtnActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_SendBtnActionPerformed
+        String clientMessage = MessagesTA.getText().trim();
+        
+        if(!clientMessage.isEmpty()){
+            
+            ScreenTA.append("Tú: " + clientMessage + "\n");
+            MessagesTA.setText("");
+            
+            try{
+                
+                String response = MessageProcessor(clientMessage);                
+                ResponseTA.append("Respuesta: " + response + "\n");
+                
+            }catch(Exception ex){
+                ResponseTA.append("Error: " + ex.getMessage() + "\n\n");
+            }
+        }else{
+            ResponseTA.append("No se pudo procesar el mensaje");
+        }
+    }//GEN-LAST:event_SendBtnActionPerformed
+    
+    public String MessageProcessor(String message) throws Exception{
+        Pattern pattern = Pattern.compile("(\\d+)");
+        Matcher matcher = pattern.matcher(message);
+                
+        if (!matcher.find()) {
+            ScreenTA.append("Chat banco: El formato de mensajes es incorrecto");        
+            return "No se pudo procesar el mensaje";
+        }
+        
+        String idAccount = matcher.group(1);
+        
+        message = message.toLowerCase();
+        
+        if (message.contains("saldo")) {
+            ScreenTA.append("Chat banco: Imprimiendo saldo de la cuenta " + idAccount);
+            return HttpHandler.sendGet("http://localhost:8080/consultar_saldo?id=" + idAccount);
+        } else if (message.contains("transaccion") || message.contains("transacciones")) {
+            ScreenTA.append("Chat banco: Imprimiendo transacciones de la cuenta " + idAccount);
+            return HttpHandler.sendGet("http://localhost:8080/consultar_transacciones?id=" + idAccount);
+        } else if (message.contains("prestamo") || message.contains("préstamo") || message.contains("prestamos")) {
+            ScreenTA.append("Chat banco: Imprimiendo lista de préstamos de la cuenta " + idAccount);
+            return HttpHandler.sendGet("http://localhost:8080/consultar_prestamos?id=" + idAccount);
+        } else {
+            ScreenTA.append("Chat banco: No reconozco la solicitud. Prueba con palabras como 'saldo', 'transacciones' o 'préstamos'.");
+            return "No se pudo realizar la consulta";
+        }
+        
+    }
+    
     /**
      * @param args the command line arguments
      */
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JTextArea MessagesTA;
+    private javax.swing.JTextArea ResponseTA;
     private javax.swing.JTextArea ScreenTA;
     private javax.swing.JButton SendBtn;
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JScrollPane jScrollPane2;
     private javax.swing.JScrollPane jScrollPane3;
-    private javax.swing.JTextArea jTextArea1;
     // End of variables declaration//GEN-END:variables
 }
