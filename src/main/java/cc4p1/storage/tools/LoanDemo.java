@@ -23,10 +23,7 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.LocalDate;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 public class LoanDemo {
 
@@ -38,7 +35,6 @@ public class LoanDemo {
   public static void main(String[] args) throws Exception {
     setupDirs();
     copyReplicasTemplateIfMissing(); // asegura prestamos.* y pagos.* en data/metadata
-    boolean overwrite = true; // o controla con -Dreplicas.overwrite=true
 
     // 1) Wiring replicado
     Partitioner partitioner = new Partitioner(NUM_PARTS);
@@ -49,31 +45,32 @@ public class LoanDemo {
     nodes.put("nodeC", new LocalFileNodeStorageClient("nodeC", BASE.resolve("nodeC"), NUM_PARTS));
     Storage st = new ReplicatedStorage(partitioner, selector, nodes);
 
-    // 2) Crear préstamo (particiona por idCliente)
-    var loan = new Loan(
-        1001L,              // idPrestamo
-        222L,               // idCliente
-        new BigDecimal("1000"), // principal
-        new BigDecimal("0.25"), // tasa anual (no usada en P1)
-        LocalDate.now(),
-        "ACTIVO"
-    );
-    // Fanout a 3 réplicas
+    // 2) Crear préstamo (ahora con 'pendiente' inicial = monto y estado ACTIVO)
+    long idPrestamo = 1001L;
+    long idCliente  = 222L;
+    BigDecimal monto = new BigDecimal("1000");
+    BigDecimal tasa  = new BigDecimal("0.25"); // no usada en P1
+    Loan loan = Loan.newLoan(idPrestamo, idCliente, monto, tasa, LocalDate.now());
     ((ReplicatedStorage) st).putPrestamo(loan);
-    System.out.println("Prestamo creado: " + loan);
+    System.out.println("Préstamo creado (pendiente inicial): " + loan.pendiente()); // 1000
 
-    // 3) Registrar pagos (particiona por idPrestamo)
-    var p1 = new Payment(UUID.randomUUID().toString(), System.currentTimeMillis(), 1001L, new BigDecimal("300"));
-    var p2 = new Payment(UUID.randomUUID().toString(), System.currentTimeMillis(), 1001L, new BigDecimal("200"));
+    // 3) Registrar pagos (particionado por idPrestamo)
+    var p1 = new Payment(UUID.randomUUID().toString(), System.currentTimeMillis(), idPrestamo, new BigDecimal("300"));
+    var p2 = new Payment(UUID.randomUUID().toString(), System.currentTimeMillis(), idPrestamo, new BigDecimal("200"));
     ((ReplicatedStorage) st).appendPago(p1);
     ((ReplicatedStorage) st).appendPago(p2);
     System.out.println("Pagos agregados: 300 y 200");
 
-    // 4) Calcular saldo pendiente (tomamos pagos desde nodeA; cualquier nodo sirve)
+    // 4) Recalcular pendiente y estado en base a pagos (leemos de nodeA; cualquier nodo sirve)
     var nodeA = new LocalFileNodeStorageClient("nodeA", BASE.resolve("nodeA"), NUM_PARTS);
-    var pagosStream = nodeA.getPagosByPrestamo(1001L);
-    var pendiente = LoanUtils.saldoPendiente(loan, pagosStream);
-    System.out.println("Saldo pendiente esperado=500, calculado=" + pendiente);
+    var pagosStream = nodeA.getPagosByPrestamo(idPrestamo);
+    Loan loanActualizado = LoanUtils.withPendienteActualizado(loan, pagosStream);
+    System.out.println("Pendiente recalculado = " + loanActualizado.pendiente() +
+        " | Estado = " + loanActualizado.estado()); // esperado: 500 | ACTIVO
+
+    // 5) (Opcional) Persistir el préstamo actualizado para que el CSV tenga el 'pendiente' real
+    ((ReplicatedStorage) st).putPrestamo(loanActualizado);
+    System.out.println("Préstamo actualizado persistido con pendiente=" + loanActualizado.pendiente());
   }
 
   // --- utilidades de preparación ---
@@ -88,7 +85,7 @@ public class LoanDemo {
   private static void copyReplicasTemplateIfMissing() throws IOException {
     if (Files.exists(PROPS)) return;
     try (var in = Thread.currentThread().getContextClassLoader()
-        .getResourceAsStream("templates/replicas.properties")) { // o replicas.template.properties
+        .getResourceAsStream("templates/replicas.properties")) {
       if (in == null) {
         // fallback mínimo por si el template no está en el jar
         String content = String.join(System.lineSeparator(),
@@ -105,8 +102,7 @@ public class LoanDemo {
             "pagos.p1 = nodeB,nodeC,nodeA",
             "pagos.p2 = nodeC,nodeA,nodeB"
         ) + System.lineSeparator();
-        Files.writeString(PROPS, content, StandardCharsets.UTF_8,
-            StandardOpenOption.CREATE_NEW);
+        Files.writeString(PROPS, content, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
         System.out.println("replicas.properties generado por fallback (sin template).");
       } else {
         Files.copy(in, PROPS);

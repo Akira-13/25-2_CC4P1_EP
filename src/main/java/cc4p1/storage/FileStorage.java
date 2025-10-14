@@ -137,7 +137,7 @@ public void putCuenta(Account acc){
 
   @Override public Stream<Transaction> getTransaccionesByCuenta(long id){ return Stream.empty(); }  
 
-  private static final String TRANSACCIONES_HEADER = "tx_id;ts;origen;destino;monto;tipo\n";
+  private static final String TRANSACCIONES_HEADER = "id_tx;id_cuenta;tipo;monto;fecha\n";
 
   private Path transaccionesFile(int p) {
     return base.resolve("partitions").resolve("transacciones_p" + p + ".csv");
@@ -159,7 +159,7 @@ public void putCuenta(Account acc){
       for (String line; (line = br.readLine()) != null; ) {
         if (line.isBlank()) continue;
         String[] cols = line.split(";");
-        if (cols.length < 6) continue;
+        if (cols.length < 5) continue;
         if (txId.equals(cols[0])) return Optional.of(cc4p1.model.Transaction.fromCsv(cols));
       }
       return Optional.empty();
@@ -183,21 +183,20 @@ public void putCuenta(Account acc){
     }
   }
 
-  private int txPartition(cc4p1.model.Transaction tx) {
-    return partitioner.partForId(tx.origen()); // particiona por cuenta ORIGEN
-  }
+ private int txPartition(cc4p1.model.Transaction tx) {
+   return partitioner.partForId(tx.idCuenta()); // particiona por id_cuenta
+ }
 
 @Override
 public void appendTransaccion(cc4p1.model.Transaction tx) {
   int p = txPartition(tx);
   Path file = transaccionesFile(p);
 
-  Optional<cc4p1.model.Transaction> existing = findTxInPartition(tx.txId(), p);
+  Optional<cc4p1.model.Transaction> existing = findTxInPartition(tx.idTx(), p);
   if (existing.isPresent()) {
     var e = existing.get();
     boolean sameCore =
-        e.origen() == tx.origen() &&
-        e.destino() == tx.destino() &&
+        e.idCuenta() == tx.idCuenta() &&
         e.monto().compareTo(tx.monto()) == 0 &&
         java.util.Objects.equals(e.tipo(), tx.tipo());
     if (sameCore) {
@@ -205,7 +204,7 @@ public void appendTransaccion(cc4p1.model.Transaction tx) {
       return;
     }
     // Mismo txId con operación distinta → conflicto
-    throw new IllegalStateException("Conflicto de idempotencia: mismo txId con payload distinto " + tx.txId());
+    throw new IllegalStateException("Conflicto de idempotencia: mismo txId con payload distinto " + tx.idTx());
   }
 
   try {
@@ -241,7 +240,7 @@ public void appendTransaccion(cc4p1.model.Transaction tx) {
   }
   
     // Headers
-    private static final String PRESTAMOS_HEADER = "id_prestamo;id_cliente;monto;tasa_anual;fecha;estado\n";
+    private static final String PRESTAMOS_HEADER = "id_prestamo;id_cliente;monto;tasa_anual;fecha;pendiente;estado\n";
     private static final String PAGOS_HEADER     = "pay_id;ts;id_prestamo;monto\n";
 
     // Rutas

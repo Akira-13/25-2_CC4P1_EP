@@ -73,7 +73,7 @@ public final class ReplicatedStorage implements Storage {
   @Override public java.util.stream.Stream<cc4p1.model.Loan> getPrestamosByCliente(long id){ throw new UnsupportedOperationException(); }
 @Override
 public void appendTransaccion(cc4p1.model.Transaction tx) {
-  int p = partitioner.partForId(tx.origen());
+  int p = partitioner.partForId(tx.idCuenta());
   boolean anyOk = false; RuntimeException last = null;
 
   for (var cli : readOrder("transacciones", p)) { // usa la tabla "transacciones" en replicas.properties
