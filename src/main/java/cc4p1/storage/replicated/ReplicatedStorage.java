@@ -89,4 +89,29 @@ public void appendTransaccion(cc4p1.model.Transaction tx) {
   @Override public BigDecimal arqueoSaldos() {
     return scanCuentas().map(Account::saldo).reduce(BigDecimal.ZERO, BigDecimal::add);
   }
+  
+    public void putPrestamo(cc4p1.model.Loan loan){
+      int p = partitioner.partForId(loan.idCliente());
+      boolean anyOk = false; RuntimeException last = null;
+      for (var cli : readOrder("prestamos", p)) {
+        try {
+          ((cc4p1.storage.replicated.LocalFileNodeStorageClient)cli).putPrestamo(loan);
+          anyOk = true;
+        } catch (RuntimeException e) { last = e; }
+      }
+      if (!anyOk && last != null) throw last;
+    }
+
+    public void appendPago(cc4p1.model.Payment pay){
+      int p = partitioner.partForId(pay.idPrestamo());
+      boolean anyOk = false; RuntimeException last = null;
+      for (var cli : readOrder("pagos", p)) {
+        try {
+          ((cc4p1.storage.replicated.LocalFileNodeStorageClient)cli).appendPago(pay);
+          anyOk = true;
+        } catch (RuntimeException e) { last = e; }
+      }
+      if (!anyOk && last != null) throw last;
+    }
+
 }

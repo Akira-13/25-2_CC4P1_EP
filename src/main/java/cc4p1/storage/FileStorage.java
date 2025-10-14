@@ -111,9 +111,7 @@ public final class FileStorage implements Storage {
 
   public BigDecimal arqueoSaldosPartition(int p) { return scanCuentasPartition(p).map(Account::saldo).reduce(BigDecimal.ZERO, BigDecimal::add); }
 
-  @Override public Stream<Transaction> getTransaccionesByCuenta(long id){ return Stream.empty(); }
-  @Override public Stream<Loan> getPrestamosByCliente(long id){ return Stream.empty(); }
-  
+  @Override public Stream<Transaction> getTransaccionesByCuenta(long id){ return Stream.empty(); }  
 
   private static final String TRANSACCIONES_HEADER = "tx_id;ts;origen;destino;monto;tipo\n";
 
@@ -217,4 +215,75 @@ public void appendTransaccion(cc4p1.model.Transaction tx) {
       throw new UncheckedIOException(e);
     }
   }
+  
+    // Headers
+    private static final String PRESTAMOS_HEADER = "id_prestamo;id_cliente;monto;tasa_anual;fecha;estado\n";
+    private static final String PAGOS_HEADER     = "pay_id;ts;id_prestamo;monto\n";
+
+    // Rutas
+    private java.nio.file.Path prestamosFile(int p){ return base.resolve("partitions").resolve("prestamos_p"+p+".csv"); }
+    private java.nio.file.Path pagosFile(int p){ return base.resolve("partitions").resolve("pagos_p"+p+".csv"); }
+    
+    // Inserta un préstamo (no-idempotente; asume idPrestamo único)
+public void putPrestamo(cc4p1.model.Loan loan){
+  int p = partitioner.partForId(loan.idCliente()); // particionar por cliente
+  var file = prestamosFile(p);
+  try {
+    ensureFileWithHeader(file, PRESTAMOS_HEADER);
+    String row = loan.toCsv() + "\n";
+    synchronized (lockFor(file)) {
+      java.nio.file.Files.write(file, row.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+          java.nio.file.StandardOpenOption.APPEND);
+    }
+  } catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
+}
+
+// Lista préstamos por cliente (rápido: lee solo su partición)
+@Override
+public java.util.stream.Stream<cc4p1.model.Loan> getPrestamosByCliente(long idCliente){
+  int p = partitioner.partForId(idCliente);
+  var file = prestamosFile(p);
+  if (!java.nio.file.Files.exists(file)) return java.util.stream.Stream.empty();
+  try {
+    var list = java.nio.file.Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8)
+      .stream().skip(1).filter(l -> !l.isBlank())
+      .map(l -> l.split(";"))
+      .map(cc4p1.model.Loan::fromCsv)
+      .filter(l -> l.idCliente() == idCliente)
+      .toList();
+    return list.stream();
+  } catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
+}
+
+// Append de pago (idempotencia opcional por payId: puedes replicar la lógica de transacciones)
+public void appendPago(cc4p1.model.Payment pay){
+  int p = partitioner.partForId(pay.idPrestamo()); // particionar por préstamo
+  var file = pagosFile(p);
+  try {
+    ensureFileWithHeader(file, PAGOS_HEADER);
+    String row = pay.toCsv() + "\n";
+    synchronized (lockFor(file)) {
+      java.nio.file.Files.write(file, row.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+          java.nio.file.StandardOpenOption.APPEND);
+    }
+  } catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
+}
+
+// Obtener pagos de un préstamo (lee solo su partición)
+public java.util.stream.Stream<cc4p1.model.Payment> getPagosByPrestamo(long idPrestamo){
+  int p = partitioner.partForId(idPrestamo);
+  var file = pagosFile(p);
+  if (!java.nio.file.Files.exists(file)) return java.util.stream.Stream.empty();
+  try {
+    var list = java.nio.file.Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8)
+      .stream().skip(1).filter(l -> !l.isBlank())
+      .map(l -> l.split(";"))
+      .map(cc4p1.model.Payment::fromCsv)
+      .filter(pg -> pg.idPrestamo() == idPrestamo)
+      .toList();
+    return list.stream();
+  } catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
+}
+
+
 }
