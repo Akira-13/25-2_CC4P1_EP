@@ -9,16 +9,19 @@ package cc4p1.model;
  * @author ak13a
  */
 import org.junit.jupiter.api.Test;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.stream.Stream;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class LoanIntegrityTest {
 
   @Test
   void pendiente_resta_suma_de_pagos_y_no_es_negativa() {
-    Loan loan = new Loan(1L, 10L, new BigDecimal("1000"), new BigDecimal("0.25"), LocalDate.now(), "ACTIVO");
+    // nuevo: usa factory para que pendiente = monto y estado = ACTIVO
+    Loan loan = Loan.newLoan(1L, 10L, new BigDecimal("1000"), new BigDecimal("0.25"), LocalDate.now());
 
     // sin pagos
     BigDecimal p0 = LoanUtils.saldoPendiente(loan, Stream.empty());
@@ -33,6 +36,11 @@ class LoanIntegrityTest {
     assertEquals(new BigDecimal("500"), p1);
     assertEquals(new BigDecimal("1000").subtract(new BigDecimal("300").add(new BigDecimal("200"))), p1);
 
+    // opcional: verificar actualización de pendiente/estado
+    Loan actualizado = LoanUtils.withPendienteActualizado(loan, pagos12);
+    assertEquals(new BigDecimal("500"), actualizado.pendiente());
+    assertEquals("ACTIVO", actualizado.estado());
+
     // pago que excede lo pendiente -> se trunca a 0
     var pagosOver = Stream.of(
         new Payment("p3", 3L, 1L, new BigDecimal("600")),
@@ -40,5 +48,10 @@ class LoanIntegrityTest {
     );
     BigDecimal p2 = LoanUtils.saldoPendiente(loan, pagosOver);
     assertEquals(BigDecimal.ZERO, p2);
+
+    // opcional: con overpay el estado debe ser CANCELADO
+    Loan cancelado = LoanUtils.withPendienteActualizado(loan, pagosOver);
+    assertEquals(BigDecimal.ZERO, cancelado.pendiente());
+    assertEquals("CANCELADO", cancelado.estado());
   }
 }
