@@ -2,6 +2,8 @@
 
 ## Generar datos
 
+- Headers de cuentas: id_cuenta;id_cliente;saldo;fecha_apertura
+
 ### SeedTool
 
 Para generar datos, ejecutar `storage/tools/SeedTool.java`. Este generará 10k datos bancarios en `data/partitions/cuentas_px.csv`.
@@ -31,6 +33,44 @@ Para generar datos, ejecutar `storage/tools/SeedTool.java`. Este generará 10k d
         - put con fanout (a las 3),
 
         - scan leyendo solo 1 nodo por partición (evita duplicados).
+
+# Logs de transacción
+
+- Headers de logs: tx_id;ts;origen;destino;monto;tipo
+- Log de transacciones particionado y replicado
+    - Cada transacción se almacena en un archivo transacciones_p{n}.csv, donde n es la partición calculada a partir de la cuenta origen.
+    - Este log se replica en los tres nodos (nodeA, nodeB, nodeC), de acuerdo al archivo replicas.properties.
+- Append atómico
+    - Se implementó escritura atómica con FileChannel.lock() y force(true), asegurando que los registros se graben completos, incluso en caso de concurrencia o fallos durante el append.
+- Idempotencia por txId
+    - Cada transacción incluye un identificador único (txId):
+    - Si la misma txId llega otra vez con el mismo contenido, se ignora (evita duplicados por reintentos).
+    - Si llega con contenido distinto, se rechaza (detecta conflicto).
+- TransactionLogDemo
+    - Programa de ejemplo que genera tres transacciones, una por cada partición (p0, p1, p2), verificando la replicación en los tres nodos.
+    - Requiere datos iniciales creados.
+
+
+# Pagos y Préstamos
+
+- Préstamos (Loan)
+    - Headers: id_prestamo;id_cliente;monto;tasa_anual;fecha;estado
+    - Registra el monto total otorgado a un cliente, su tasa anual y fecha de otorgamiento.
+    - Guardado en archivos prestamos_p{n}.csv (particionado por id_cliente).
+    - Replicado automáticamente en los tres nodos (nodeA, nodeB, nodeC).
+    - Se ignoran intereses por ahora
+- Pagos (Payment)
+    - pay_id;ts;id_prestamo;monto
+    - Registra cada abono a un préstamo (monto y timestamp).
+    - Guardado en archivos pagos_p{n}.csv (particionado por id_prestamo).
+    - También replicado en los tres nodos.
+- LoanUtils
+    - Clase utilitaria que calcula:
+    - Saldo pendiente: monto – sum(pagos) (sin intereses en P1).
+    - Estado lógico: "ACTIVO" o "CANCELADO" según el saldo restante.
+- LoanDemo
+    - Programa que crea un préstamo replicado, registra dos pagos y calcula el saldo pendiente (ejemplo: préstamo de 1000, pagos de 300 y 200 → pendiente 500).
+
 
 # EJECUCIÓN DEL COORDINADOR
 

@@ -14,4 +14,8 @@ public interface Storage {
   void appendTransaccion(Transaction tx); // se usará desde S2
 
   BigDecimal arqueoSaldos();
+  
+   default Optional<Transaction> getTransaccionById(String txId) {
+    throw new UnsupportedOperationException("getTransaccionById not implemented");
+  }
 }
