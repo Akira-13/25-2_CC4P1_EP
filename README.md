@@ -32,6 +32,22 @@ Para generar datos, ejecutar `storage/tools/SeedTool.java`. Este generará 10k d
 
         - scan leyendo solo 1 nodo por partición (evita duplicados).
 
+# Logs de transacción
+
+- Headers de logs: tx_id;ts;origen;destino;monto;tipo
+- Log de transacciones particionado y replicado
+    - Cada transacción se almacena en un archivo transacciones_p{n}.csv, donde n es la partición calculada a partir de la cuenta origen.
+    - Este log se replica en los tres nodos (nodeA, nodeB, nodeC), de acuerdo al archivo replicas.properties.
+- Append atómico
+    - Se implementó escritura atómica con FileChannel.lock() y force(true), asegurando que los registros se graben completos, incluso en caso de concurrencia o fallos durante el append.
+- Idempotencia por txId
+    - Cada transacción incluye un identificador único (txId):
+    - Si la misma txId llega otra vez con el mismo contenido, se ignora (evita duplicados por reintentos).
+    - Si llega con contenido distinto, se rechaza (detecta conflicto).
+- TransactionLogDemo
+    - Programa de ejemplo que genera tres transacciones, una por cada partición (p0, p1, p2), verificando la replicación en los tres nodos.
+    - Requiere datos iniciales creados.
+
 # EJECUCIÓN DEL COORDINADOR
 
 ## 1. Generar datos iniciales (opcional)

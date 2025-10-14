@@ -71,8 +71,21 @@ public final class ReplicatedStorage implements Storage {
 
   @Override public java.util.stream.Stream<cc4p1.model.Transaction> getTransaccionesByCuenta(long id){ throw new UnsupportedOperationException(); }
   @Override public java.util.stream.Stream<cc4p1.model.Loan> getPrestamosByCliente(long id){ throw new UnsupportedOperationException(); }
-  @Override public void appendTransaccion(cc4p1.model.Transaction tx){ throw new UnsupportedOperationException(); }
+@Override
+public void appendTransaccion(cc4p1.model.Transaction tx) {
+  int p = partitioner.partForId(tx.origen());
+  boolean anyOk = false; RuntimeException last = null;
 
+  for (var cli : readOrder("transacciones", p)) { // usa la tabla "transacciones" en replicas.properties
+    try {
+      ((cc4p1.storage.replicated.LocalFileNodeStorageClient) cli).appendTransaccion(tx);
+      anyOk = true;
+    } catch (RuntimeException e) {
+      last = e; // intenta siguiente réplica
+    }
+  }
+  if (!anyOk && last != null) throw last; // si todas fallan, error
+}
   @Override public BigDecimal arqueoSaldos() {
     return scanCuentas().map(Account::saldo).reduce(BigDecimal.ZERO, BigDecimal::add);
   }

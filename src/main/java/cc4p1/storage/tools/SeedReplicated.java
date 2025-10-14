@@ -27,6 +27,7 @@ public final class SeedReplicated {
   public static void main(String[] args) throws Exception {
     int n = args.length > 0 ? Integer.parseInt(args[0]) : 10_000;
     setupDirsAndReplicasFileIfMissing();
+    copyReplicasTemplateIfMissing();   // 👈 nueva llamada aquí
 
     // 1) Particionador y selector
     Partitioner partitioner = new Partitioner(NUM_PARTS);
@@ -74,4 +75,19 @@ public final class SeedReplicated {
       System.out.println("Creado " + PROPS.toString());
     }
   }
+ 
+private static void copyReplicasTemplateIfMissing() throws IOException {
+  Files.createDirectories(META);
+  if (!Files.exists(PROPS)) {
+    try (var in = Thread.currentThread().getContextClassLoader()
+            .getResourceAsStream("templates/replicas.template.properties")) {
+      if (in == null) {
+        System.err.println("No se encontró templates/replicas.template.properties en resources");
+        return;
+      }
+      Files.copy(in, PROPS);
+      System.out.println("Copiado template de replicas.properties en " + PROPS);
+    }
+  }
+}
 }

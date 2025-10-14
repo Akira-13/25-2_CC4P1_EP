@@ -25,4 +25,7 @@ public final class LocalFileNodeStorageClient implements NodeStorageClient {
   @Override public void putCuenta(Account acc) { storage.putCuenta(acc); }
   @Override public Stream<Account> scanCuentasPartition(int p) { return storage.scanCuentasPartition(p); }
   @Override public BigDecimal arqueoSaldosPartition(int p) { return storage.arqueoSaldosPartition(p); }
+  public void appendTransaccion(cc4p1.model.Transaction tx) {
+  storage.appendTransaccion(tx);
+}
 }

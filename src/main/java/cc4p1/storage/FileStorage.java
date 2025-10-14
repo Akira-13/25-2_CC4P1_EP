@@ -7,6 +7,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Stream;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
 
 public final class FileStorage implements Storage {
     private static final java.util.concurrent.ConcurrentHashMap<Path, Object> FILE_LOCKS = new java.util.concurrent.ConcurrentHashMap<>();
@@ -111,5 +113,108 @@ public final class FileStorage implements Storage {
 
   @Override public Stream<Transaction> getTransaccionesByCuenta(long id){ return Stream.empty(); }
   @Override public Stream<Loan> getPrestamosByCliente(long id){ return Stream.empty(); }
-  @Override public void appendTransaccion(Transaction tx){ /* S2 */ }
+  
+
+  private static final String TRANSACCIONES_HEADER = "tx_id;ts;origen;destino;monto;tipo\n";
+
+  private Path transaccionesFile(int p) {
+    return base.resolve("partitions").resolve("transacciones_p" + p + ".csv");
+  }
+
+  private void ensureFileWithHeader(Path file, String header) throws IOException {
+    Files.createDirectories(file.getParent());
+    if (!Files.exists(file)) {
+      Files.write(file, header.getBytes(StandardCharsets.UTF_8),
+          StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+    }
+  }
+
+  private Optional<cc4p1.model.Transaction> findTxInPartition(String txId, int p) {
+    Path f = transaccionesFile(p);
+    if (!Files.exists(f)) return Optional.empty();
+    try (BufferedReader br = Files.newBufferedReader(f, StandardCharsets.UTF_8)) {
+      br.readLine(); // header
+      for (String line; (line = br.readLine()) != null; ) {
+        if (line.isBlank()) continue;
+        String[] cols = line.split(";");
+        if (cols.length < 6) continue;
+        if (txId.equals(cols[0])) return Optional.of(cc4p1.model.Transaction.fromCsv(cols));
+      }
+      return Optional.empty();
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  private void atomicAppendLine(Path file, String lineWithNewline) throws IOException {
+    // lock por archivo dentro del proceso
+    synchronized (lockFor(file)) {
+      ensureFileWithHeader(file, TRANSACCIONES_HEADER);
+      try (FileChannel ch = FileChannel.open(file,
+          StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
+        try (var ignored = ch.lock()) { // lock de canal (coopera entre procesos Java)
+          var buf = java.nio.ByteBuffer.wrap(lineWithNewline.getBytes(StandardCharsets.UTF_8));
+          while (buf.hasRemaining()) ch.write(buf);
+          ch.force(true); // fsync a disco
+        }
+      }
+    }
+  }
+
+  private int txPartition(cc4p1.model.Transaction tx) {
+    return partitioner.partForId(tx.origen()); // particiona por cuenta ORIGEN
+  }
+
+@Override
+public void appendTransaccion(cc4p1.model.Transaction tx) {
+  int p = txPartition(tx);
+  Path file = transaccionesFile(p);
+
+  Optional<cc4p1.model.Transaction> existing = findTxInPartition(tx.txId(), p);
+  if (existing.isPresent()) {
+    var e = existing.get();
+    boolean sameCore =
+        e.origen() == tx.origen() &&
+        e.destino() == tx.destino() &&
+        e.monto().compareTo(tx.monto()) == 0 &&
+        java.util.Objects.equals(e.tipo(), tx.tipo());
+    if (sameCore) {
+      // Mismo txId y misma operación (ignorando ts) → idempotente (no-op)
+      return;
+    }
+    // Mismo txId con operación distinta → conflicto
+    throw new IllegalStateException("Conflicto de idempotencia: mismo txId con payload distinto " + tx.txId());
+  }
+
+  try {
+    atomicAppendLine(file, tx.toCsv() + "\n");
+  } catch (IOException e) {
+    throw new UncheckedIOException(e);
+  }
+}
+
+  @Override
+  public Optional<cc4p1.model.Transaction> getTransaccionById(String txId) {
+    for (int p = 0; p < partitioner.numParts(); p++) {
+      var t = findTxInPartition(txId, p);
+      if (t.isPresent()) return t;
+    }
+    return Optional.empty();
+  }
+
+  // (opcional) scan por partición para tests/aggregados
+  public java.util.stream.Stream<cc4p1.model.Transaction> scanTransaccionesPartition(int p) {
+    Path f = transaccionesFile(p);
+    if (!Files.exists(f)) return java.util.stream.Stream.empty();
+    try {
+      var list = Files.readAllLines(f, StandardCharsets.UTF_8)
+          .stream().skip(1).filter(s -> !s.isBlank())
+          .map(s -> s.split(";"))
+          .map(cc4p1.model.Transaction::fromCsv)
+          .toList();
+      return list.stream();
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
 }
