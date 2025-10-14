@@ -1,1 +1,1 @@
-id_prestamo;id_cliente;monto;pendiente;estado;fecha
+id_prestamo;id_cliente;monto;tasa_anual;fecha;estado

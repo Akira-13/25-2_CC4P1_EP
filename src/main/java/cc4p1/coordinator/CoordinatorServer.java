@@ -20,23 +20,67 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import cc4p1.storage.Partitioner;
 import java.util.concurrent.Executors;
 
 public class CoordinatorServer {
 
     private static final int PORT = 8080;
-    private static final int NUM_PARTITIONS = 6;
+    // Debe coincidir con el particionador y replicas.properties (SeedReplicated
+    // crea 3 por defecto)
+    private static final int NUM_PARTITIONS = 3;
     private static final RoutingTable routingTable = new RoutingTable(NUM_PARTITIONS);
+    // Particionador compartido para que el coordinator calcule la misma partición
+    private static final Partitioner PARTITIONER = new Partitioner(NUM_PARTITIONS);
 
     public static void main(String[] args) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 0);
         server.createContext("/register", new RegisterHandler());
         server.createContext("/consultar_cuenta", new ConsultarCuentaHandler());
+        server.createContext("/routing", new RoutingHandler());
         server.createContext("/healthz", new HealthHandler());
         server.setExecutor(Executors.newCachedThreadPool());
         server.start();
 
         System.out.println("[Coordinator] Servidor iniciado en puerto " + PORT);
+    }
+
+    static class RoutingHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendResponse(exchange, 405, "{\"error\":\"Método no permitido\"}");
+                return;
+            }
+
+            Map<Integer, List<NodeInfo>> snap = routingTable.snapshot();
+            StringBuilder sb = new StringBuilder();
+            sb.append("{\"ok\":true,\"routing\":{");
+            boolean firstPart = true;
+            for (var e : snap.entrySet()) {
+                if (!firstPart)
+                    sb.append(',');
+                firstPart = false;
+                sb.append('"').append(e.getKey()).append('"').append(':');
+                sb.append('[');
+                boolean firstNode = true;
+                for (NodeInfo n : e.getValue()) {
+                    if (!firstNode)
+                        sb.append(',');
+                    firstNode = false;
+                    sb.append('{')
+                            .append("\"host\":\"").append(n.getHost()).append("\"")
+                            .append(',')
+                            .append("\"port\":").append(n.getPort())
+                            .append(',')
+                            .append("\"priority\":").append(n.getPriority())
+                            .append('}');
+                }
+                sb.append(']');
+            }
+            sb.append("}});");
+            sendResponse(exchange, 200, sb.toString());
+        }
     }
 
     // --- Handlers ---
@@ -83,10 +127,13 @@ public class CoordinatorServer {
 
             Map<String, String> q = parseQuery(exchange.getRequestURI());
             int id = Integer.parseInt(q.getOrDefault("id", "-1"));
-            int partition = Math.floorMod(id, NUM_PARTITIONS);
+            int partition = PARTITIONER.partForId(id);
             List<NodeInfo> replicas = routingTable.getReplicas(partition);
 
             if (replicas.isEmpty()) {
+                // Log útil para diagnóstico: qué partición se buscó y snapshot actual
+                System.out.println("[Coordinator] No hay réplicas para la partición " + partition + ". Snapshot: "
+                        + routingTable.snapshot());
                 sendResponse(exchange, 503, "{\"ok\":false,\"error\":\"NODOS_NO_DISPONIBLES\"}");
                 return;
             }
@@ -108,14 +155,14 @@ public class CoordinatorServer {
     static Map<String, String> parseQuery(URI uri) {
         Map<String, String> map = new HashMap<>();
         String query = uri.getRawQuery();
-        if (query == null) return map;
+        if (query == null)
+            return map;
         for (String pair : query.split("&")) {
             int idx = pair.indexOf("=");
             if (idx > 0) {
                 map.put(
-                    URLDecoder.decode(pair.substring(0, idx), StandardCharsets.UTF_8),
-                    URLDecoder.decode(pair.substring(idx + 1), StandardCharsets.UTF_8)
-                );
+                        URLDecoder.decode(pair.substring(0, idx), StandardCharsets.UTF_8),
+                        URLDecoder.decode(pair.substring(idx + 1), StandardCharsets.UTF_8));
             }
         }
         return map;

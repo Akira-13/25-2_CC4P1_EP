@@ -71,9 +71,47 @@ public final class ReplicatedStorage implements Storage {
 
   @Override public java.util.stream.Stream<cc4p1.model.Transaction> getTransaccionesByCuenta(long id){ throw new UnsupportedOperationException(); }
   @Override public java.util.stream.Stream<cc4p1.model.Loan> getPrestamosByCliente(long id){ throw new UnsupportedOperationException(); }
-  @Override public void appendTransaccion(cc4p1.model.Transaction tx){ throw new UnsupportedOperationException(); }
+@Override
+public void appendTransaccion(cc4p1.model.Transaction tx) {
+  int p = partitioner.partForId(tx.idCuenta());
+  boolean anyOk = false; RuntimeException last = null;
 
+  for (var cli : readOrder("transacciones", p)) { // usa la tabla "transacciones" en replicas.properties
+    try {
+      ((cc4p1.storage.replicated.LocalFileNodeStorageClient) cli).appendTransaccion(tx);
+      anyOk = true;
+    } catch (RuntimeException e) {
+      last = e; // intenta siguiente réplica
+    }
+  }
+  if (!anyOk && last != null) throw last; // si todas fallan, error
+}
   @Override public BigDecimal arqueoSaldos() {
     return scanCuentas().map(Account::saldo).reduce(BigDecimal.ZERO, BigDecimal::add);
   }
+  
+    public void putPrestamo(cc4p1.model.Loan loan){
+      int p = partitioner.partForId(loan.idCliente());
+      boolean anyOk = false; RuntimeException last = null;
+      for (var cli : readOrder("prestamos", p)) {
+        try {
+          ((cc4p1.storage.replicated.LocalFileNodeStorageClient)cli).putPrestamo(loan);
+          anyOk = true;
+        } catch (RuntimeException e) { last = e; }
+      }
+      if (!anyOk && last != null) throw last;
+    }
+
+    public void appendPago(cc4p1.model.Payment pay){
+      int p = partitioner.partForId(pay.idPrestamo());
+      boolean anyOk = false; RuntimeException last = null;
+      for (var cli : readOrder("pagos", p)) {
+        try {
+          ((cc4p1.storage.replicated.LocalFileNodeStorageClient)cli).appendPago(pay);
+          anyOk = true;
+        } catch (RuntimeException e) { last = e; }
+      }
+      if (!anyOk && last != null) throw last;
+    }
+
 }
