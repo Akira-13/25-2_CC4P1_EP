@@ -39,20 +39,44 @@ public final class FileStorage implements Storage {
       } catch(IOException e){ throw new UncheckedIOException(e); }
     }
 
-    @Override
-    public void putCuenta(Account acc){
-      int p = partitioner.partForId(acc.id());
-      Path file = cuentasFile(p);
-      try {
-        ensureCuentasFileWithHeader(file);
-        String row = acc.toCsv() + "\n";
-        // lock por archivo/partición
-        synchronized (lockFor(file)) {
-          Files.write(file, row.getBytes(StandardCharsets.UTF_8),
-            StandardOpenOption.APPEND);
+@Override
+public void putCuenta(Account acc){
+  int p = partitioner.partForId(acc.id());
+  Path file = cuentasFile(p);
+  try {
+    ensureCuentasFileWithHeader(file);
+    synchronized (lockFor(file)) {
+      java.util.List<String> lines = java.nio.file.Files.exists(file)
+          ? java.nio.file.Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8)
+          : java.util.List.of();
+
+      java.util.List<String> out = new java.util.ArrayList<>();
+      if (lines.isEmpty()) {
+        out.add(CUENTAS_HEADER.strip()); // header
+      } else {
+        out.add(lines.get(0)); // header existente
+        for (int i = 1; i < lines.size(); i++) {
+          String ln = lines.get(i);
+          if (ln.isBlank()) continue;
+          String[] f = ln.split(";");
+          long id = Long.parseLong(f[0]);
+          if (id != acc.id()) out.add(ln); // filtra la cuenta que vamos a reemplazar
         }
-      } catch(IOException e){ throw new UncheckedIOException(e); }
+      }
+      // escribe de nuevo sin la vieja fila
+      java.nio.file.Files.write(file,
+          String.join("\n", out).concat("\n").getBytes(java.nio.charset.StandardCharsets.UTF_8),
+          java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
+          java.nio.file.StandardOpenOption.CREATE);
+
+      // append de la nueva fila
+      String row = acc.toCsv() + "\n";
+      java.nio.file.Files.write(file, row.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+          java.nio.file.StandardOpenOption.APPEND);
     }
+  } catch (java.io.IOException e){ throw new java.io.UncheckedIOException(e); }
+}
+
 
     @Override
     public BigDecimal arqueoSaldos(){
