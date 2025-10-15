@@ -33,20 +33,12 @@ public class CoordinatorServer {
     // Particionador compartido para que el coordinator calcule la misma partición
     private static final Partitioner PARTITIONER = new Partitioner(NUM_PARTITIONS);
 
-    // Métricas simples en memoria
-    private static final java.util.concurrent.atomic.AtomicLong reqTotal = new java.util.concurrent.atomic.AtomicLong(0);
-    private static final java.util.concurrent.atomic.AtomicLong fallbacksTotal = new java.util.concurrent.atomic.AtomicLong(0);
-    private static final java.util.concurrent.atomic.AtomicLong errorsTotal = new java.util.concurrent.atomic.AtomicLong(0);
-
     public static void main(String[] args) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 0);
         server.createContext("/register", new RegisterHandler());
         server.createContext("/consultar_cuenta", new ConsultarCuentaHandler());
-        server.createContext("/transferir_cuenta", new TransferirCuentaHandler());
-        server.createContext("/estado_prestamo", new EstadoPrestamoHandler());
         server.createContext("/routing", new RoutingHandler());
         server.createContext("/healthz", new HealthHandler());
-        server.createContext("/metrics", new MetricsHandler());
         server.setExecutor(Executors.newCachedThreadPool());
         server.start();
 
@@ -128,10 +120,7 @@ public class CoordinatorServer {
     static class ConsultarCuentaHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            reqTotal.incrementAndGet();
-            long start = System.currentTimeMillis();
             if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                errorsTotal.incrementAndGet();
                 sendResponse(exchange, 405, "{\"error\":\"Método no permitido\"}");
                 return;
             }
@@ -142,160 +131,16 @@ public class CoordinatorServer {
             List<NodeInfo> replicas = routingTable.getReplicas(partition);
 
             if (replicas.isEmpty()) {
-                errorsTotal.incrementAndGet();
+                // Log útil para diagnóstico: qué partición se buscó y snapshot actual
                 System.out.println("[Coordinator] No hay réplicas para la partición " + partition + ". Snapshot: "
                         + routingTable.snapshot());
                 sendResponse(exchange, 503, "{\"ok\":false,\"error\":\"NODOS_NO_DISPONIBLES\"}");
                 return;
             }
 
+            // Esto lo implementaremos luego
             String body = WorkerForwarder.forwardQuery(replicas, id);
-            long duration = System.currentTimeMillis() - start;
-            System.out.printf("[Coordinator] GET /consultar_cuenta?id=%d → partition=%d, duration=%dms%n",
-                    id, partition, duration);
             sendResponse(exchange, 200, body);
-        }
-    }
-
-    static class TransferirCuentaHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            reqTotal.incrementAndGet();
-            long start = System.currentTimeMillis();
-
-            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                errorsTotal.incrementAndGet();
-                sendResponse(exchange, 405, "{\"ok\":false,\"error\":\"Método no permitido\"}");
-                return;
-            }
-
-            Map<String, String> q = parseQuery(exchange.getRequestURI());
-            String origenStr = q.get("origen");
-            String destinoStr = q.get("destino");
-            String montoStr = q.get("monto");
-            String txId = q.get("txId");
-
-            // Validaciones
-            if (origenStr == null || destinoStr == null || montoStr == null || txId == null || txId.isBlank()) {
-                errorsTotal.incrementAndGet();
-                sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Faltan parámetros: origen, destino, monto, txId\"}");
-                return;
-            }
-
-            try {
-                int origen = Integer.parseInt(origenStr);
-                int destino = Integer.parseInt(destinoStr);
-                double monto = Double.parseDouble(montoStr);
-
-                if (monto <= 0) {
-                    errorsTotal.incrementAndGet();
-                    sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Monto debe ser mayor a 0\"}");
-                    return;
-                }
-
-                // Partición del origen
-                int partition = PARTITIONER.partForId(origen);
-                List<NodeInfo> replicas = routingTable.getReplicas(partition);
-
-                if (replicas.isEmpty()) {
-                    errorsTotal.incrementAndGet();
-                    System.out.printf("[Coordinator] Transfer txId=%s: No hay réplicas para partición %d%n", txId, partition);
-                    sendResponse(exchange, 503, "{\"ok\":false,\"error\":\"NODOS_NO_DISPONIBLES\"}");
-                    return;
-                }
-
-                // Solo intentamos el primario (priority=0)
-                NodeInfo primary = replicas.get(0);
-                System.out.printf("[Coordinator] POST /transferir_cuenta txId=%s origen=%d destino=%d monto=%.2f → partition=%d, primary=%s%n",
-                        txId, origen, destino, monto, partition, primary);
-
-                String body = WorkerForwarder.forwardTransfer(primary, origen, destino, monto, txId);
-                long duration = System.currentTimeMillis() - start;
-
-                // Determinar código de respuesta basado en el body
-                int responseCode = determineResponseCode(body);
-                if (responseCode >= 400) {
-                    errorsTotal.incrementAndGet();
-                }
-
-                System.out.printf("[Coordinator] Transfer txId=%s completado con código %d en %dms%n",
-                        txId, responseCode, duration);
-                sendResponse(exchange, responseCode, body);
-
-            } catch (NumberFormatException e) {
-                errorsTotal.incrementAndGet();
-                sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Parámetros numéricos inválidos\"}");
-            }
-        }
-    }
-
-    static class EstadoPrestamoHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            reqTotal.incrementAndGet();
-            long start = System.currentTimeMillis();
-
-            if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                errorsTotal.incrementAndGet();
-                sendResponse(exchange, 405, "{\"ok\":false,\"error\":\"Método no permitido\"}");
-                return;
-            }
-
-            Map<String, String> q = parseQuery(exchange.getRequestURI());
-            String idStr = q.get("id");
-
-            if (idStr == null) {
-                errorsTotal.incrementAndGet();
-                sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Falta parámetro id\"}");
-                return;
-            }
-
-            try {
-                int cuentaId = Integer.parseInt(idStr);
-                int partition = PARTITIONER.partForId(cuentaId);
-                List<NodeInfo> replicas = routingTable.getReplicas(partition);
-
-                if (replicas.isEmpty()) {
-                    errorsTotal.incrementAndGet();
-                    System.out.printf("[Coordinator] Prestamo id=%d: No hay réplicas para partición %d%n", cuentaId, partition);
-                    sendResponse(exchange, 503, "{\"ok\":false,\"error\":\"NODOS_NO_DISPONIBLES\"}");
-                    return;
-                }
-
-                System.out.printf("[Coordinator] GET /estado_prestamo?id=%d → partition=%d, replicas=%s%n",
-                        cuentaId, partition, replicas);
-
-                String body = WorkerForwarder.forwardPrestamo(replicas, cuentaId);
-                long duration = System.currentTimeMillis() - start;
-
-                // Contar fallbacks si se intentó más de un nodo
-                if (replicas.size() > 1 && body.contains("\"ok\":true")) {
-                    fallbacksTotal.incrementAndGet();
-                }
-
-                int responseCode = determineResponseCode(body);
-                if (responseCode >= 400) {
-                    errorsTotal.incrementAndGet();
-                }
-
-                System.out.printf("[Coordinator] Prestamo id=%d completado con código %d en %dms%n",
-                        cuentaId, responseCode, duration);
-                sendResponse(exchange, responseCode, body);
-
-            } catch (NumberFormatException e) {
-                errorsTotal.incrementAndGet();
-                sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Parámetro id inválido\"}");
-            }
-        }
-    }
-
-    static class MetricsHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            String response = String.format(
-                    "{\"ok\":true,\"metrics\":{\"req_total\":%d,\"fallbacks_total\":%d,\"errors_total\":%d}}",
-                    reqTotal.get(), fallbacksTotal.get(), errorsTotal.get());
-            sendResponse(exchange, 200, response);
         }
     }
 
@@ -321,29 +166,5 @@ public class CoordinatorServer {
             }
         }
         return map;
-    }
-
-    /**
-     * Determina el código de respuesta HTTP basado en el contenido del body JSON.
-     */
-    static int determineResponseCode(String body) {
-        if (body.contains("\"ok\":true")) {
-            return 200;
-        }
-        if (body.contains("\"error\":\"CUENTA_NO_EXISTE\"") || body.contains("\"error\":\"NOT_FOUND\"") 
-                || body.contains("\"error\":\"CUENTA_SIN_PRESTAMOS\"")) {
-            return 404;
-        }
-        if (body.contains("\"error\":\"SALDO_INSUFICIENTE\"") || body.contains("\"error\":\"TX_DUPLICADA\"")) {
-            return 409;
-        }
-        if (body.contains("\"error\":\"VALIDACION\"")) {
-            return 400;
-        }
-        if (body.contains("\"error\":\"NODOS_NO_DISPONIBLES\"")) {
-            return 503;
-        }
-        // Default para otros errores
-        return 500;
     }
 }

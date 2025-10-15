@@ -240,7 +240,7 @@ public void appendTransaccion(cc4p1.model.Transaction tx) {
   }
   
     // Headers
-    private static final String PRESTAMOS_HEADER = "id_prestamo;id_cliente;monto;tasa_anual;fecha;pendiente;estado\n";
+    private static final String PRESTAMOS_HEADER = "id_prestamo;id_cliente;monto;tasa_anual;fecha;estado\n";
     private static final String PAGOS_HEADER     = "pay_id;ts;id_prestamo;monto\n";
 
     // Rutas

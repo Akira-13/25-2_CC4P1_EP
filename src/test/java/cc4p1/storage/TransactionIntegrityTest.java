@@ -17,7 +17,6 @@ import org.junit.jupiter.api.*;
 
 import java.math.BigDecimal;
 import java.nio.file.*;
-import java.time.LocalDate;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -29,7 +28,7 @@ class TransactionIntegrityTest {
 
   @BeforeAll
   static void setup() throws Exception {
-    // limpia nodos y crea estructura mínima
+    // limpia y crea estructura mínima
     for (String n : List.of("nodeA","nodeB","nodeC")) {
       Path parts = BASE.resolve(n).resolve("partitions");
       if (Files.exists(parts)) try (var s = Files.walk(parts)) {
@@ -38,8 +37,7 @@ class TransactionIntegrityTest {
       Files.createDirectories(parts);
     }
     Files.createDirectories(META.getParent());
-
-    // replicas para cuentas y transacciones
+    // replicas completas para cuentas y transacciones
     String props = String.join(System.lineSeparator(),
         "cuentas.p0 = nodeA,nodeB,nodeC",
         "cuentas.p1 = nodeB,nodeC,nodeA",
@@ -48,7 +46,7 @@ class TransactionIntegrityTest {
         "transacciones.p1 = nodeB,nodeC,nodeA",
         "transacciones.p2 = nodeC,nodeA,nodeB"
     ) + System.lineSeparator();
-    Files.writeString(META, props, java.nio.charset.StandardCharsets.UTF_8);
+    Files.writeString(META, props);
   }
 
   private ReplicatedStorage newReplicated() {
@@ -65,35 +63,19 @@ class TransactionIntegrityTest {
   void reintentos_misma_txid_no_duplican_registro() throws Exception {
     var st = newReplicated();
 
-    String txId = "TX-INTEG-NEW-1";
-    long idCuenta = 123L;
-    var tx = new Transaction(txId, idCuenta, "DEBITO", new BigDecimal("50"), LocalDate.now());
+    String txId = "TX-INTEG-1";
+    long origen = 123L, destino = 456L;
+    var tx = new Transaction(txId, System.currentTimeMillis(), origen, destino, new BigDecimal("50"), "TRANSFER");
 
-    // reintento: mismo id_tx y mismo payload
+    // reintento: mismo txId y mismo payload
     st.appendTransaccion(tx);
     st.appendTransaccion(tx);
 
-    int p = new Partitioner(3).partForId(idCuenta);
+    int p = new Partitioner(3).partForId(origen);
     for (String n : List.of("nodeA","nodeB","nodeC")) {
       Path f = BASE.resolve(n).resolve("partitions").resolve("transacciones_p"+p+".csv");
-      assertTrue(Files.exists(f), "Falta archivo en " + n);
       long count = Files.readAllLines(f).stream().skip(1).filter(s -> s.startsWith(txId+";")).count();
-      assertEquals(1, count, "Idempotencia falló en " + n);
+      assertEquals(1, count, "idempotencia falló en " + n);
     }
-  }
-
-  @Test
-  void mismo_txid_con_payload_distinto_lanza_conflicto() {
-    var st = newReplicated();
-
-    String txId = "TX-INTEG-NEW-2";
-    long idCuenta = 456L;
-
-    var t1 = new Transaction(txId, idCuenta, "DEBITO", new BigDecimal("10.00"), LocalDate.now());
-    var t2 = new Transaction(txId, idCuenta, "DEBITO", new BigDecimal("99.00"), LocalDate.now()); // cambia monto
-
-    st.appendTransaccion(t1);
-    assertThrows(IllegalStateException.class, () -> st.appendTransaccion(t2),
-        "Debe fallar por conflicto de idempotencia (mismo id_tx con payload distinto)");
   }
 }
