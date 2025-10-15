@@ -36,7 +36,7 @@ Para generar datos, ejecutar `storage/tools/SeedTool.java`. Este generará 10k d
 
 # Logs de transacción
 
-- Headers de logs: id_tx;id_cuenta;tipo;monto;fecha
+- Headers de logs: tx_id;ts;origen;destino;monto;tipo
 - Log de transacciones particionado y replicado
     - Cada transacción se almacena en un archivo transacciones_p{n}.csv, donde n es la partición calculada a partir de la cuenta origen.
     - Este log se replica en los tres nodos (nodeA, nodeB, nodeC), de acuerdo al archivo replicas.properties.
@@ -54,7 +54,7 @@ Para generar datos, ejecutar `storage/tools/SeedTool.java`. Este generará 10k d
 # Pagos y Préstamos
 
 - Préstamos (Loan)
-    - Headers: id_prestamo;id_cliente;monto;tasa_anual;fecha;pendiente;estado
+    - Headers: id_prestamo;id_cliente;monto;tasa_anual;fecha;estado
     - Registra el monto total otorgado a un cliente, su tasa anual y fecha de otorgamiento.
     - Guardado en archivos prestamos_p{n}.csv (particionado por id_cliente).
     - Replicado automáticamente en los tres nodos (nodeA, nodeB, nodeC).
