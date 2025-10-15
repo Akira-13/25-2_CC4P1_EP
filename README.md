@@ -129,18 +129,59 @@ java BankCli.java consultar 42 --coordinator=localhost:8080
 
 ### Coordinator
 
-- **POST /register**
-  - Registra un nodo.
+#### Administración
+- **POST /register?host=&port=&partitions=&role=**
+  - Registra un nodo worker en la tabla de ruteo.
+  - Parámetros: `host`, `port`, `partitions` (separadas por coma), `role` (primary/replica)
   - Ejemplo:
-    `POST http://localhost:8080/register?host=localhost&port=9001&partitions=0,1,2&role=replica`
+    `POST http://localhost:8080/register?host=localhost&port=9001&partitions=0,1,2&role=primary`
+
+#### Operaciones de Cuentas
 - **GET /consultar_cuenta?id=ID**
-  - Consulta una cuenta por id (el coordinator reenvía la consulta al nodo correspondiente).
+  - Consulta una cuenta por ID (con failover automático).
   - Ejemplo:
     `GET http://localhost:8080/consultar_cuenta?id=42`
+  - Respuesta: `{"ok":true,"account":{"id":42,"idCliente":42,"saldo":"1000","fechaApertura":"2025-10-13"}}`
+
+- **POST /transferir_cuenta?origen=&destino=&monto=&txId=**
+  - Realiza una transferencia entre cuentas (con failover inteligente).
+  - Parámetros: `origen` (ID cuenta origen), `destino` (ID cuenta destino), `monto`, `txId` (único para idempotencia)
+  - Ejemplo:
+    `POST http://localhost:8080/transferir_cuenta?origen=42&destino=100&monto=50.00&txId=tx-001`
+  - Respuesta: `{"ok":true}` o `{"ok":false,"error":"SALDO_INSUFICIENTE"}`
+
+- **GET /consultar_transacciones?id=ID**
+  - Consulta las transacciones de una cuenta (con failover automático).
+  - Ejemplo:
+    `GET http://localhost:8080/consultar_transacciones?id=42`
+  - Respuesta: `{"ok":true,"transacciones":[{"idTx":"tx-001","idCuenta":42,"tipo":"DEBITO","monto":"50.00","fecha":"2025-10-15"}]}`
+
+#### Operaciones de Préstamos
+- **GET /estado_prestamo?id=ID**
+  - Consulta el estado de préstamos de una cuenta (con failover automático).
+  - Ejemplo:
+    `GET http://localhost:8080/estado_prestamo?id=42`
+  - Respuesta: `{"ok":true,"prestamos":[{"idPrestamo":1,"monto":"1000.00","pendiente":"500.00","estado":"ACTIVO"}]}`
+
+- **POST /crear_prestamo?idCliente=&monto=&tasaAnual=&loanId=**
+  - Crea un nuevo préstamo para un cliente (con failover inteligente).
+  - Parámetros: `idCliente`, `monto`, `tasaAnual` (0-1, ej: 0.25 = 25%), `loanId` (único para idempotencia)
+  - Ejemplo:
+    `POST http://localhost:8080/crear_prestamo?idCliente=42&monto=1000.00&tasaAnual=0.25&loanId=loan-001`
+  - Respuesta: `{"ok":true,"idPrestamo":1}` o `{"ok":false,"error":"CLIENTE_NO_EXISTE"}`
+
+#### Monitoreo
 - **GET /routing**
   - Devuelve el mapeo actual de particiones y nodos registrados.
+  - Respuesta: `{"ok":true,"routing":{"0":[{"host":"localhost","port":9001,"priority":0},...]}}`
+
 - **GET /healthz**
   - Verifica que el coordinador está activo.
+  - Respuesta: `{"ok":true,"msg":"coordinator up"}`
+
+- **GET /metrics**
+  - Devuelve métricas del coordinador.
+  - Respuesta: `{"ok":true,"metrics":{"req_total":100,"fallbacks_total":5,"errors_total":2}}`
 
 ### Nodo (NodeServer)
 

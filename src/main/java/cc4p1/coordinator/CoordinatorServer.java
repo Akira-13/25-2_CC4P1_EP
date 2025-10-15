@@ -44,6 +44,8 @@ public class CoordinatorServer {
         server.createContext("/consultar_cuenta", new ConsultarCuentaHandler());
         server.createContext("/transferir_cuenta", new TransferirCuentaHandler());
         server.createContext("/estado_prestamo", new EstadoPrestamoHandler());
+        server.createContext("/consultar_transacciones", new ConsultarTransaccionesHandler());
+        server.createContext("/crear_prestamo", new CrearPrestamoHandler());
         server.createContext("/routing", new RoutingHandler());
         server.createContext("/healthz", new HealthHandler());
         server.createContext("/metrics", new MetricsHandler());
@@ -326,6 +328,146 @@ public class CoordinatorServer {
         }
     }
 
+    static class ConsultarTransaccionesHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            reqTotal.incrementAndGet();
+            long start = System.currentTimeMillis();
+
+            if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                errorsTotal.incrementAndGet();
+                sendResponse(exchange, 405, "{\"ok\":false,\"error\":\"Método no permitido\"}");
+                return;
+            }
+
+            Map<String, String> q = parseQuery(exchange.getRequestURI());
+            String idStr = q.get("id");
+
+            if (idStr == null) {
+                errorsTotal.incrementAndGet();
+                sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Falta parámetro id\"}");
+                return;
+            }
+
+            try {
+                int cuentaId = Integer.parseInt(idStr);
+                int partition = PARTITIONER.partForId(cuentaId);
+                List<NodeInfo> replicas = routingTable.getReplicas(partition);
+
+                if (replicas.isEmpty()) {
+                    errorsTotal.incrementAndGet();
+                    System.out.printf("[Coordinator] Transacciones id=%d: No hay réplicas para partición %d%n", cuentaId, partition);
+                    sendResponse(exchange, 503, "{\"ok\":false,\"error\":\"NODOS_NO_DISPONIBLES\"}");
+                    return;
+                }
+
+                System.out.printf("[Coordinator] GET /consultar_transacciones?id=%d → partition=%d, réplicas=%d%n",
+                        cuentaId, partition, replicas.size());
+
+                WorkerForwarder.ForwardResult result = WorkerForwarder.forwardConsultarTransaccionesWithMetrics(replicas, cuentaId);
+                if (result.usedFailover) {
+                    fallbacksTotal.incrementAndGet();
+                }
+                
+                long duration = System.currentTimeMillis() - start;
+
+                int responseCode = determineResponseCode(result.body);
+                if (responseCode >= 400) {
+                    errorsTotal.incrementAndGet();
+                }
+
+                System.out.printf("[Coordinator] Transacciones id=%d completado con código %d en %dms, failover=%s%n",
+                        cuentaId, responseCode, duration, result.usedFailover);
+                sendResponse(exchange, responseCode, result.body);
+
+            } catch (NumberFormatException e) {
+                errorsTotal.incrementAndGet();
+                sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Parámetro id inválido\"}");
+            }
+        }
+    }
+
+    static class CrearPrestamoHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            reqTotal.incrementAndGet();
+            long start = System.currentTimeMillis();
+
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                errorsTotal.incrementAndGet();
+                sendResponse(exchange, 405, "{\"ok\":false,\"error\":\"Método no permitido\"}");
+                return;
+            }
+
+            Map<String, String> q = parseQuery(exchange.getRequestURI());
+            String idClienteStr = q.get("idCliente");
+            String montoStr = q.get("monto");
+            String tasaAnualStr = q.get("tasaAnual");
+            String loanId = q.get("loanId");
+
+            // Validaciones
+            if (idClienteStr == null || montoStr == null || tasaAnualStr == null || loanId == null || loanId.isBlank()) {
+                errorsTotal.incrementAndGet();
+                sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Faltan parámetros: idCliente, monto, tasaAnual, loanId\"}");
+                return;
+            }
+
+            try {
+                int idCliente = Integer.parseInt(idClienteStr);
+                double monto = Double.parseDouble(montoStr);
+                double tasaAnual = Double.parseDouble(tasaAnualStr);
+
+                if (monto <= 0) {
+                    errorsTotal.incrementAndGet();
+                    sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Monto debe ser mayor a 0\"}");
+                    return;
+                }
+
+                if (tasaAnual < 0 || tasaAnual > 1) {
+                    errorsTotal.incrementAndGet();
+                    sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Tasa anual debe estar entre 0 y 1\"}");
+                    return;
+                }
+
+                // Partición basada en idCliente
+                int partition = PARTITIONER.partForId(idCliente);
+                List<NodeInfo> replicas = routingTable.getReplicas(partition);
+
+                if (replicas.isEmpty()) {
+                    errorsTotal.incrementAndGet();
+                    System.out.printf("[Coordinator] CrearPrestamo loanId=%s: No hay réplicas para partición %d%n", loanId, partition);
+                    sendResponse(exchange, 503, "{\"ok\":false,\"error\":\"NODOS_NO_DISPONIBLES\"}");
+                    return;
+                }
+
+                System.out.printf("[Coordinator] POST /crear_prestamo loanId=%s idCliente=%d monto=%.2f tasaAnual=%.4f → partition=%d, réplicas=%d%n",
+                        loanId, idCliente, monto, tasaAnual, partition, replicas.size());
+
+                // Usar failover inteligente: reintentar solo en fallos de red, no en errores de negocio
+                WorkerForwarder.ForwardResult result = WorkerForwarder.forwardCrearPrestamoWithFailover(replicas, idCliente, monto, tasaAnual, loanId);
+                if (result.usedFailover) {
+                    fallbacksTotal.incrementAndGet();
+                }
+                
+                long duration = System.currentTimeMillis() - start;
+
+                // Determinar código de respuesta basado en el body
+                int responseCode = determineResponseCode(result.body);
+                if (responseCode >= 400) {
+                    errorsTotal.incrementAndGet();
+                }
+
+                System.out.printf("[Coordinator] CrearPrestamo loanId=%s completado con código %d en %dms, failover=%s%n",
+                        loanId, responseCode, duration, result.usedFailover);
+                sendResponse(exchange, responseCode, result.body);
+
+            } catch (NumberFormatException e) {
+                errorsTotal.incrementAndGet();
+                sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Parámetros numéricos inválidos\"}");
+            }
+        }
+    }
+
     static class MetricsHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -368,7 +510,7 @@ public class CoordinatorServer {
             return 200;
         }
         if (body.contains("\"error\":\"CUENTA_NO_EXISTE\"") || body.contains("\"error\":\"NOT_FOUND\"") 
-                || body.contains("\"error\":\"CUENTA_SIN_PRESTAMOS\"")) {
+                || body.contains("\"error\":\"CUENTA_SIN_PRESTAMOS\"") || body.contains("\"error\":\"CUENTA_SIN_TRANSACCIONES\"")) {
             return 404;
         }
         if (body.contains("\"error\":\"SALDO_INSUFICIENTE\"") || body.contains("\"error\":\"TX_DUPLICADA\"")) {
