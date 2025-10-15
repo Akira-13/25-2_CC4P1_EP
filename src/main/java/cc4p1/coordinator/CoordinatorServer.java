@@ -111,17 +111,34 @@ public class CoordinatorServer {
 
             Map<String, String> q = parseQuery(exchange.getRequestURI());
             String host = q.get("host");
-            int port = Integer.parseInt(q.getOrDefault("port", "0"));
-            String role = q.getOrDefault("role", "replica");
-            List<Integer> parts = new ArrayList<>();
-            if (q.containsKey("partitions")) {
-                for (String s : q.get("partitions").split(",")) {
+            String portStr = q.get("port");
+            String partitionsStr = q.get("partitions");
+            
+            // Validaciones
+            if (host == null || host.isBlank() || portStr == null || partitionsStr == null) {
+                sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Faltan parámetros: host, port, partitions\"}");
+                return;
+            }
+            
+            try {
+                int port = Integer.parseInt(portStr);
+                if (port <= 0 || port > 65535) {
+                    sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Puerto debe estar entre 1 y 65535\"}");
+                    return;
+                }
+                
+                String role = q.getOrDefault("role", "replica");
+                List<Integer> parts = new ArrayList<>();
+                for (String s : partitionsStr.split(",")) {
                     parts.add(Integer.valueOf(s.trim()));
                 }
-            }
 
-            routingTable.registerNode(host, port, parts, role);
-            sendResponse(exchange, 200, "{\"ok\":true,\"msg\":\"nodo registrado\"}");
+                routingTable.registerNode(host, port, parts, role);
+                sendResponse(exchange, 200, "{\"ok\":true,\"msg\":\"nodo registrado\"}");
+                
+            } catch (NumberFormatException e) {
+                sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Parámetros numéricos inválidos\"}");
+            }
         }
     }
 
@@ -137,23 +154,41 @@ public class CoordinatorServer {
             }
 
             Map<String, String> q = parseQuery(exchange.getRequestURI());
-            int id = Integer.parseInt(q.getOrDefault("id", "-1"));
-            int partition = PARTITIONER.partForId(id);
-            List<NodeInfo> replicas = routingTable.getReplicas(partition);
-
-            if (replicas.isEmpty()) {
+            String idStr = q.get("id");
+            
+            if (idStr == null) {
                 errorsTotal.incrementAndGet();
-                System.out.println("[Coordinator] No hay réplicas para la partición " + partition + ". Snapshot: "
-                        + routingTable.snapshot());
-                sendResponse(exchange, 503, "{\"ok\":false,\"error\":\"NODOS_NO_DISPONIBLES\"}");
+                sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Falta parámetro id\"}");
                 return;
             }
+            
+            try {
+                int id = Integer.parseInt(idStr);
+                int partition = PARTITIONER.partForId(id);
+                List<NodeInfo> replicas = routingTable.getReplicas(partition);
 
-            String body = WorkerForwarder.forwardQuery(replicas, id);
-            long duration = System.currentTimeMillis() - start;
-            System.out.printf("[Coordinator] GET /consultar_cuenta?id=%d → partition=%d, duration=%dms%n",
-                    id, partition, duration);
-            sendResponse(exchange, 200, body);
+                if (replicas.isEmpty()) {
+                    errorsTotal.incrementAndGet();
+                    System.out.println("[Coordinator] No hay réplicas para la partición " + partition + ". Snapshot: "
+                            + routingTable.snapshot());
+                    sendResponse(exchange, 503, "{\"ok\":false,\"error\":\"NODOS_NO_DISPONIBLES\"}");
+                    return;
+                }
+
+                WorkerForwarder.ForwardResult result = WorkerForwarder.forwardQueryWithMetrics(replicas, id);
+                if (result.usedFailover) {
+                    fallbacksTotal.incrementAndGet();
+                }
+                
+                long duration = System.currentTimeMillis() - start;
+                System.out.printf("[Coordinator] GET /consultar_cuenta?id=%d → partition=%d, duration=%dms, failover=%s%n",
+                        id, partition, duration, result.usedFailover);
+                sendResponse(exchange, 200, result.body);
+                
+            } catch (NumberFormatException e) {
+                errorsTotal.incrementAndGet();
+                sendResponse(exchange, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Parámetro id inválido\"}");
+            }
         }
     }
 
@@ -204,23 +239,26 @@ public class CoordinatorServer {
                     return;
                 }
 
-                // Solo intentamos el primario (priority=0)
-                NodeInfo primary = replicas.get(0);
-                System.out.printf("[Coordinator] POST /transferir_cuenta txId=%s origen=%d destino=%d monto=%.2f → partition=%d, primary=%s%n",
-                        txId, origen, destino, monto, partition, primary);
+                System.out.printf("[Coordinator] POST /transferir_cuenta txId=%s origen=%d destino=%d monto=%.2f → partition=%d, réplicas=%d%n",
+                        txId, origen, destino, monto, partition, replicas.size());
 
-                String body = WorkerForwarder.forwardTransfer(primary, origen, destino, monto, txId);
+                // Usar failover inteligente: reintentar solo en fallos de red, no en errores de negocio
+                WorkerForwarder.ForwardResult result = WorkerForwarder.forwardTransferWithFailover(replicas, origen, destino, monto, txId);
+                if (result.usedFailover) {
+                    fallbacksTotal.incrementAndGet();
+                }
+                
                 long duration = System.currentTimeMillis() - start;
 
                 // Determinar código de respuesta basado en el body
-                int responseCode = determineResponseCode(body);
+                int responseCode = determineResponseCode(result.body);
                 if (responseCode >= 400) {
                     errorsTotal.incrementAndGet();
                 }
 
-                System.out.printf("[Coordinator] Transfer txId=%s completado con código %d en %dms%n",
-                        txId, responseCode, duration);
-                sendResponse(exchange, responseCode, body);
+                System.out.printf("[Coordinator] Transfer txId=%s completado con código %d en %dms, failover=%s%n",
+                        txId, responseCode, duration, result.usedFailover);
+                sendResponse(exchange, responseCode, result.body);
 
             } catch (NumberFormatException e) {
                 errorsTotal.incrementAndGet();
@@ -262,25 +300,24 @@ public class CoordinatorServer {
                     return;
                 }
 
-                System.out.printf("[Coordinator] GET /estado_prestamo?id=%d → partition=%d, replicas=%s%n",
-                        cuentaId, partition, replicas);
+                System.out.printf("[Coordinator] GET /estado_prestamo?id=%d → partition=%d, réplicas=%d%n",
+                        cuentaId, partition, replicas.size());
 
-                String body = WorkerForwarder.forwardPrestamo(replicas, cuentaId);
-                long duration = System.currentTimeMillis() - start;
-
-                // Contar fallbacks si se intentó más de un nodo
-                if (replicas.size() > 1 && body.contains("\"ok\":true")) {
+                WorkerForwarder.ForwardResult result = WorkerForwarder.forwardPrestamoWithMetrics(replicas, cuentaId);
+                if (result.usedFailover) {
                     fallbacksTotal.incrementAndGet();
                 }
+                
+                long duration = System.currentTimeMillis() - start;
 
-                int responseCode = determineResponseCode(body);
+                int responseCode = determineResponseCode(result.body);
                 if (responseCode >= 400) {
                     errorsTotal.incrementAndGet();
                 }
 
-                System.out.printf("[Coordinator] Prestamo id=%d completado con código %d en %dms%n",
-                        cuentaId, responseCode, duration);
-                sendResponse(exchange, responseCode, body);
+                System.out.printf("[Coordinator] Prestamo id=%d completado con código %d en %dms, failover=%s%n",
+                        cuentaId, responseCode, duration, result.usedFailover);
+                sendResponse(exchange, responseCode, result.body);
 
             } catch (NumberFormatException e) {
                 errorsTotal.incrementAndGet();
