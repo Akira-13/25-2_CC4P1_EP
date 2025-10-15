@@ -263,4 +263,142 @@ public class WorkerForwarder {
     public static String forwardPrestamo(List<NodeInfo> replicas, int cuentaId) {
         return forwardPrestamoWithMetrics(replicas, cuentaId).body;
     }
+
+    /**
+     * Reenvía consulta de transacciones de una cuenta con failover completo.
+     * Intenta primario → réplica1 → réplica2 hasta recibir 200.
+     */
+    public static ForwardResult forwardConsultarTransaccionesWithMetrics(List<NodeInfo> replicas, int cuentaId) {
+        boolean any404 = false;
+        int replicaIndex = 0;
+        
+        for (NodeInfo node : replicas) {
+            String url = String.format("http://%s:%d/consultar_transacciones?id=%d",
+                    node.getHost(), node.getPort(), cuentaId);
+
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .timeout(Duration.ofMillis(1300))
+                        .GET()
+                        .build();
+
+                long start = System.currentTimeMillis();
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                long duration = System.currentTimeMillis() - start;
+                int code = response.statusCode();
+
+                if (code == 200) {
+                    if (replicaIndex > 0) {
+                        System.out.printf("[Failover] ✓ Transacciones id=%d respondidas por réplica %d (%s) en %dms%n",
+                                cuentaId, replicaIndex, node, duration);
+                    } else {
+                        System.out.printf("[Forwarder] Transacciones id=%d → nodo primario %s respondió %d en %dms%n",
+                                cuentaId, node, code, duration);
+                    }
+                    return new ForwardResult(response.body(), replicaIndex > 0, replicaIndex);
+                }
+
+                if (code == 404) {
+                    System.out.printf("[Forwarder] Transacciones id=%d → nodo %s respondió 404, probando siguiente réplica%n",
+                            cuentaId, node);
+                    any404 = true;
+                    replicaIndex++;
+                    continue;
+                }
+
+                // Errores 5xx: reintentar en siguiente réplica
+                if (code >= 500 && code < 600) {
+                    System.out.printf("[Failover] Transacciones id=%d → nodo %s respondió %d (error servidor), probando siguiente réplica%n",
+                            cuentaId, node, code);
+                    replicaIndex++;
+                    continue;
+                }
+
+                System.out.printf("[Forwarder] Transacciones id=%d → nodo %s devolvió código %d (no reintentar)%n",
+                        cuentaId, node, code);
+                return new ForwardResult(response.body(), replicaIndex > 0, replicaIndex);
+
+            } catch (IOException | InterruptedException e) {
+                System.out.printf("[Failover] Transacciones id=%d falló en nodo %s (%s: %s), probando siguiente réplica%n",
+                        cuentaId, node, e.getClass().getSimpleName(), e.getMessage());
+                replicaIndex++;
+            }
+        }
+
+        // Todas las réplicas fallaron
+        String errorBody;
+        if (any404) {
+            errorBody = "{\"ok\":false,\"error\":\"CUENTA_SIN_TRANSACCIONES\"}";
+        } else {
+            errorBody = "{\"ok\":false,\"error\":\"NODOS_NO_DISPONIBLES\"}";
+        }
+        System.out.printf("[Failover] Transacciones id=%d falló en todas las réplicas (intentos: %d)%n",
+                cuentaId, replicaIndex);
+        return new ForwardResult(errorBody, replicaIndex > 0, replicaIndex);
+    }
+
+    /**
+     * Reenvía creación de préstamo con failover inteligente:
+     * - Reintentar en réplicas SOLO si hay fallo de red/timeout (IOException, InterruptedException)
+     * - NO reintentar si el nodo responde con error de negocio (400, 404, 409)
+     * - Retorna resultado con información de failover
+     */
+    public static ForwardResult forwardCrearPrestamoWithFailover(List<NodeInfo> replicas, int idCliente, double monto, double tasaAnual, String loanId) {
+        int replicaIndex = 0;
+        
+        for (NodeInfo node : replicas) {
+            String url = String.format("http://%s:%d/crear_prestamo?idCliente=%d&monto=%.2f&tasaAnual=%.4f&loanId=%s",
+                    node.getHost(), node.getPort(), idCliente, monto, tasaAnual, loanId);
+
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .timeout(Duration.ofMillis(1300))
+                        .POST(HttpRequest.BodyPublishers.noBody())
+                        .build();
+
+                long start = System.currentTimeMillis();
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                long duration = System.currentTimeMillis() - start;
+                int code = response.statusCode();
+
+                // Errores de negocio: NO reintentar (la operación llegó al nodo)
+                if (code == 400 || code == 404 || code == 409) {
+                    System.out.printf("[Forwarder] CrearPrestamo loanId=%s → nodo %s respondió %d (error de negocio, no reintentar) en %dms%n",
+                            loanId, node, code, duration);
+                    return new ForwardResult(response.body(), replicaIndex > 0, replicaIndex);
+                }
+
+                // Errores 5xx: reintentar en siguiente réplica
+                if (code >= 500 && code < 600) {
+                    System.out.printf("[Failover] CrearPrestamo loanId=%s → nodo %s respondió %d (error servidor), probando siguiente réplica%n",
+                            loanId, node, code);
+                    replicaIndex++;
+                    continue;
+                }
+
+                // Éxito (200) o cualquier otro código
+                if (replicaIndex > 0) {
+                    System.out.printf("[Failover] ✓ CrearPrestamo loanId=%s completado por réplica %d (%s) con código %d en %dms%n",
+                            loanId, replicaIndex, node, code, duration);
+                } else {
+                    System.out.printf("[Forwarder] CrearPrestamo loanId=%s → nodo primario %s respondió %d en %dms%n",
+                            loanId, node, code, duration);
+                }
+                return new ForwardResult(response.body(), replicaIndex > 0, replicaIndex);
+
+            } catch (IOException | InterruptedException e) {
+                // Fallo de red/timeout: SÍ reintentar (la operación NO llegó al nodo)
+                System.out.printf("[Failover] CrearPrestamo loanId=%s falló en nodo %s (%s: %s), probando siguiente réplica%n",
+                        loanId, node, e.getClass().getSimpleName(), e.getMessage());
+                replicaIndex++;
+            }
+        }
+
+        // Todas las réplicas fallaron
+        System.out.printf("[Failover] CrearPrestamo loanId=%s falló en todas las réplicas (intentos: %d)%n",
+                loanId, replicaIndex);
+        return new ForwardResult("{\"ok\":false,\"error\":\"NODOS_NO_DISPONIBLES\"}", replicaIndex > 0, replicaIndex);
+    }
 }
