@@ -368,9 +368,15 @@ public final class WorkerServer {
     }
 
     static long clientIdOf(Object a) {
-        Number n = asNumber(invokeAny(a, "clientId", "getClientId", "client", "getClient", "customerId", "getCustomerId"));
+        Number n = asNumber(invokeAny(a,
+            "idCliente", "getIdCliente",   
+            "clientId", "getClientId",
+            "client", "getClient",
+            "customerId", "getCustomerId"
+        ));
         return (n != null) ? n.longValue() : -1L;
     }
+
 
     static LocalDate openedAtOf(Object a) {
         Object v = invokeAny(a, "openedAt", "getOpenedAt", "apertura", "getApertura", "createdAt", "getCreatedAt");
