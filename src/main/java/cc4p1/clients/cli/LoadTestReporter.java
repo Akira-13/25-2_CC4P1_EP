@@ -116,4 +116,22 @@ public final class LoadTestReporter {
             return '"' + v + '"';
         return v;
     }
+
+    public void writeSummaryJson(File file, Summary s) throws IOException {
+        String json = new StringBuilder(256)
+                .append('{')
+                .append("\"total\":").append(s.total).append(',')
+                .append("\"ok\":").append(s.ok).append(',')
+                .append("\"fail\":").append(s.fail).append(',')
+                .append("\"p50\":").append(s.p50).append(',')
+                .append("\"p90\":").append(s.p90).append(',')
+                .append("\"p95\":").append(s.p95).append(',')
+                .append("\"p99\":").append(s.p99).append(',')
+                .append("\"qps\":").append(String.format(java.util.Locale.ROOT, "%.4f", s.qps))
+                .append('}')
+                .toString();
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(file, StandardCharsets.UTF_8))) {
+            bw.write(json);
+        }
+    }
 }

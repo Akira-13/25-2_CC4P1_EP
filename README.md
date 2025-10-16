@@ -38,39 +38,37 @@ Para generar datos, ejecutar `storage/tools/SeedTool.java`. Este generará 10k d
 
 - Headers de logs: id_tx;id_cuenta;tipo;monto;fecha
 - Log de transacciones particionado y replicado
-    - Cada transacción se almacena en un archivo transacciones_p{n}.csv, donde n es la partición calculada a partir de la cuenta origen.
-    - Este log se replica en los tres nodos (nodeA, nodeB, nodeC), de acuerdo al archivo replicas.properties.
+  - Cada transacción se almacena en un archivo transacciones_p{n}.csv, donde n es la partición calculada a partir de la cuenta origen.
+  - Este log se replica en los tres nodos (nodeA, nodeB, nodeC), de acuerdo al archivo replicas.properties.
 - Append atómico
-    - Se implementó escritura atómica con FileChannel.lock() y force(true), asegurando que los registros se graben completos, incluso en caso de concurrencia o fallos durante el append.
+  - Se implementó escritura atómica con FileChannel.lock() y force(true), asegurando que los registros se graben completos, incluso en caso de concurrencia o fallos durante el append.
 - Idempotencia por txId
-    - Cada transacción incluye un identificador único (txId):
-    - Si la misma txId llega otra vez con el mismo contenido, se ignora (evita duplicados por reintentos).
-    - Si llega con contenido distinto, se rechaza (detecta conflicto).
+  - Cada transacción incluye un identificador único (txId):
+  - Si la misma txId llega otra vez con el mismo contenido, se ignora (evita duplicados por reintentos).
+  - Si llega con contenido distinto, se rechaza (detecta conflicto).
 - TransactionLogDemo
-    - Programa de ejemplo que genera tres transacciones, una por cada partición (p0, p1, p2), verificando la replicación en los tres nodos.
-    - Requiere datos iniciales creados.
-
+  - Programa de ejemplo que genera tres transacciones, una por cada partición (p0, p1, p2), verificando la replicación en los tres nodos.
+  - Requiere datos iniciales creados.
 
 # Pagos y Préstamos
 
 - Préstamos (Loan)
-    - Headers: id_prestamo;id_cliente;monto;tasa_anual;fecha;pendiente;estado
-    - Registra el monto total otorgado a un cliente, su tasa anual y fecha de otorgamiento.
-    - Guardado en archivos prestamos_p{n}.csv (particionado por id_cliente).
-    - Replicado automáticamente en los tres nodos (nodeA, nodeB, nodeC).
-    - Se ignoran intereses por ahora
+  - Headers: id_prestamo;id_cliente;monto;tasa_anual;fecha;pendiente;estado
+  - Registra el monto total otorgado a un cliente, su tasa anual y fecha de otorgamiento.
+  - Guardado en archivos prestamos_p{n}.csv (particionado por id_cliente).
+  - Replicado automáticamente en los tres nodos (nodeA, nodeB, nodeC).
+  - Se ignoran intereses por ahora
 - Pagos (Payment)
-    - pay_id;ts;id_prestamo;monto
-    - Registra cada abono a un préstamo (monto y timestamp).
-    - Guardado en archivos pagos_p{n}.csv (particionado por id_prestamo).
-    - También replicado en los tres nodos.
+  - pay_id;ts;id_prestamo;monto
+  - Registra cada abono a un préstamo (monto y timestamp).
+  - Guardado en archivos pagos_p{n}.csv (particionado por id_prestamo).
+  - También replicado en los tres nodos.
 - LoanUtils
-    - Clase utilitaria que calcula:
-    - Saldo pendiente: monto – sum(pagos) (sin intereses en P1).
-    - Estado lógico: "ACTIVO" o "CANCELADO" según el saldo restante.
+  - Clase utilitaria que calcula:
+  - Saldo pendiente: monto – sum(pagos) (sin intereses en P1).
+  - Estado lógico: "ACTIVO" o "CANCELADO" según el saldo restante.
 - LoanDemo
-    - Programa que crea un préstamo replicado, registra dos pagos y calcula el saldo pendiente (ejemplo: préstamo de 1000, pagos de 300 y 200 → pendiente 500).
-
+  - Programa que crea un préstamo replicado, registra dos pagos y calcula el saldo pendiente (ejemplo: préstamo de 1000, pagos de 300 y 200 → pendiente 500).
 
 # EJECUCIÓN DEL COORDINADOR
 
@@ -96,26 +94,55 @@ cd src\main\java\cc4p1\coordinator
 java CoordinatorServer.java
 ```
 
-### 2.2. Iniciar los nodos
+### 2.2. Iniciar los workers-nodos
 
-Desde la raíz del proyecto o desde `src/main/java/cc4p1/storage/replicated`:
-
-```powershell
-cd src\main\java\cc4p1\storage\replicated
-java NodeServer.java nodeA 9001 3
-java NodeServer.java nodeB 9002 3
-java NodeServer.java nodeC 9003 3
-```
-
-## 3. Registrar los nodos en el coordinador
-
-En una terminal de PowerShell, ejecuta:
+Desde la raíz del proyecto (o donde esté el target/classes generado), puedes iniciar cada worker con:
 
 ```powershell
-Invoke-WebRequest -Method POST "http://localhost:8080/register?host=localhost&port=9001&partitions=0,1,2&role=replica" -UseBasicParsing
-Invoke-WebRequest -Method POST "http://localhost:8080/register?host=localhost&port=9002&partitions=0,1,2&role=replica" -UseBasicParsing
-Invoke-WebRequest -Method POST "http://localhost:8080/register?host=localhost&port=9003&partitions=0,1,2&role=replica" -UseBasicParsing
+java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeA --host 127.0.0.1 --port 9091 --parts 3 --partitions "0,1,2" --coord http://127.0.0.1:8080
 ```
+
+Para levantar varios nodos en la misma máquina, usa diferentes nodeId y puertos:
+
+- Nodo A:
+
+  ```powershell
+  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeA --host 127.0.0.1 --port 9091 --parts 3 --partitions "0,1,2" --coord http://127.0.0.1:8080
+  ```
+
+- Nodo B:
+
+  ```powershell
+  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeB --host 127.0.0.1 --port 9092 --parts 3 --partitions "0,1,2" --coord http://127.0.0.1:8080
+  ```
+
+- Nodo C:
+
+  ```powershell
+  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeC --host 127.0.0.1 --port 9093 --parts 3 --partitions "0,1,2" --coord http://127.0.0.1:8080
+  ```
+
+Si quieres repartir las particiones (sharding, sin replicación), puedes hacer:
+
+- Nodo A (solo partición 0):
+
+  ```powershell
+  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeA --host 127.0.0.1 --port 9091 --parts 3 --partitions "0" --coord http://127.0.0.1:8080
+  ```
+
+- Nodo B (solo partición 1):
+
+  ```powershell
+  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeB --host 127.0.0.1 --port 9092 --parts 3 --partitions "1" --coord http://127.0.0.1:8080
+  ```
+
+- Nodo C (solo partición 2):
+
+  ```powershell
+  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeC --host 127.0.0.1 --port 9093 --parts 3 --partitions "2" --coord http://127.0.0.1:8080
+  ```
+
+Cada worker usará su propia carpeta de datos (data/nodeA, data/nodeB, etc). Puedes correr cada comando en una terminal diferente.
 
 ## 4. Consultar cuentas usando el CLI
 
@@ -127,87 +154,113 @@ java BankCli.java consultar 42 --coordinator=localhost:8080
 
 ## 5. Endpoints disponibles
 
-### Coordinator
+### Coordinator (Coordinador)
 
-#### Administración
+#### Administración y monitoreo
+
 - **POST /register?host=&port=&partitions=&role=**
   - Registra un nodo worker en la tabla de ruteo.
   - Parámetros: `host`, `port`, `partitions` (separadas por coma), `role` (primary/replica)
   - Ejemplo:
     `POST http://localhost:8080/register?host=localhost&port=9001&partitions=0,1,2&role=primary`
-
-#### Operaciones de Cuentas
-- **GET /consultar_cuenta?id=ID**
-  - Consulta una cuenta por ID (con failover automático).
-  - Ejemplo:
-    `GET http://localhost:8080/consultar_cuenta?id=42`
-  - Respuesta: `{"ok":true,"account":{"id":42,"idCliente":42,"saldo":"1000","fechaApertura":"2025-10-13"}}`
-
-- **POST /transferir_cuenta?origen=&destino=&monto=&txId=**
-  - Realiza una transferencia entre cuentas (con failover inteligente).
-  - Parámetros: `origen` (ID cuenta origen), `destino` (ID cuenta destino), `monto`, `txId` (único para idempotencia)
-  - Ejemplo:
-    `POST http://localhost:8080/transferir_cuenta?origen=42&destino=100&monto=50.00&txId=tx-001`
-  - Respuesta: `{"ok":true}` o `{"ok":false,"error":"SALDO_INSUFICIENTE"}`
-
-- **GET /consultar_transacciones?id=ID**
-  - Consulta las transacciones de una cuenta (con failover automático).
-  - Ejemplo:
-    `GET http://localhost:8080/consultar_transacciones?id=42`
-  - Respuesta: `{"ok":true,"transacciones":[{"idTx":"tx-001","idCuenta":42,"tipo":"DEBITO","monto":"50.00","fecha":"2025-10-15"}]}`
-
-#### Operaciones de Préstamos
-- **GET /estado_prestamo?id=ID**
-  - Consulta el estado de préstamos de una cuenta (con failover automático).
-  - Ejemplo:
-    `GET http://localhost:8080/estado_prestamo?id=42`
-  - Respuesta: `{"ok":true,"prestamos":[{"idPrestamo":1,"monto":"1000.00","pendiente":"500.00","estado":"ACTIVO"}]}`
-
-- **POST /crear_prestamo?idCliente=&monto=&tasaAnual=&loanId=**
-  - Crea un nuevo préstamo para un cliente (con failover inteligente).
-  - Parámetros: `idCliente`, `monto`, `tasaAnual` (0-1, ej: 0.25 = 25%), `loanId` (único para idempotencia)
-  - Ejemplo:
-    `POST http://localhost:8080/crear_prestamo?idCliente=42&monto=1000.00&tasaAnual=0.25&loanId=loan-001`
-  - Respuesta: `{"ok":true,"idPrestamo":1}` o `{"ok":false,"error":"CLIENTE_NO_EXISTE"}`
-
-#### Monitoreo
 - **GET /routing**
   - Devuelve el mapeo actual de particiones y nodos registrados.
   - Respuesta: `{"ok":true,"routing":{"0":[{"host":"localhost","port":9001,"priority":0},...]}}`
-
 - **GET /healthz**
   - Verifica que el coordinador está activo.
   - Respuesta: `{"ok":true,"msg":"coordinator up"}`
-
 - **GET /metrics**
   - Devuelve métricas del coordinador.
   - Respuesta: `{"ok":true,"metrics":{"req_total":100,"fallbacks_total":5,"errors_total":2}}`
 
-### Nodo (NodeServer)
+#### Operaciones de cuentas y préstamos
+
+- **GET /consultar_cuenta?id=ID**
+  - Consulta una cuenta por ID (con failover automático).
+  - Ejemplo: `GET http://localhost:8080/consultar_cuenta?id=42`
+- **POST /transferir_cuenta?origen=&destino=&monto=&txId=**
+  - Realiza una transferencia entre cuentas (con failover inteligente).
+  - Parámetros: `origen`, `destino`, `monto`, `txId` (idempotencia)
+  - Ejemplo: `POST http://localhost:8080/transferir_cuenta?origen=42&destino=100&monto=50.00&txId=tx-001`
+- **GET /consultar_transacciones?id=ID**
+  - Consulta las transacciones de una cuenta (con failover automático).
+  - Ejemplo: `GET http://localhost:8080/consultar_transacciones?id=42`
+- **GET /estado_prestamo?id=ID**
+  - Consulta el estado de préstamos de una cuenta (con failover automático).
+  - Ejemplo: `GET http://localhost:8080/estado_prestamo?id=42`
+- **POST /crear_prestamo?idCliente=&monto=&tasaAnual=&loanId=**
+  - Crea un nuevo préstamo para un cliente (con failover inteligente).
+  - Parámetros: `idCliente`, `monto`, `tasaAnual`, `loanId` (idempotencia)
+  - Ejemplo: `POST http://localhost:8080/crear_prestamo?idCliente=42&monto=1000.00&tasaAnual=0.25&loanId=loan-001`
+
+### Worker (Nodo)
+
+#### Operaciones principales
 
 - **GET /consultar_cuenta?id=ID**
   - Devuelve la cuenta local si existe.
-- **GET /healthz**
+- **POST /transferir_cuenta?origen=&destino=&monto=&txId=**
+  - Realiza una transferencia local (idempotente por txId).
+- **GET /consultar_transacciones?id=ID**
+  - Devuelve las transacciones de una cuenta local.
+- **GET /estado_prestamo?id=ID**
+  - Devuelve el estado de préstamos de una cuenta local.
+- **POST /crear_prestamo?idCliente=&monto=&tasaAnual=&loanId=**
+  - Crea un préstamo local para un cliente.
+
+#### Monitoreo y caos
+
+- **GET /health** y **GET /healthz**
   - Verifica que el nodo está activo.
+- **GET /metrics**
+  - Devuelve métricas del nodo (requests, latencias, etc).
+- **GET /chaos/latency?ms=NUM**
+  - Inyecta latencia artificial en todas las operaciones (para pruebas de tolerancia a fallos).
+  - Ejemplo: `GET http://localhost:9091/chaos/latency?ms=200`
+- **GET /chaos/disk?on=true|false**
+  - Simula fallo de disco (todas las escrituras fallan si está activado).
+  - Ejemplo: `GET http://localhost:9091/chaos/disk?on=true`
+- **GET /chaos/crash**
+  - Simula un crash inmediato del proceso (mata el worker para pruebas de recuperación).
 
-## 6. Respuestas esperadas
+## 6. Estadísticas, benchmarks y arqueo
 
-- Consulta exitosa:
+### Consultar métricas de los nodos
 
-```json
-{"ok":true,"account":{"id":42,"idCliente":42,"saldo":"1000","fechaApertura":"2025-10-13"}}
+- Coordinador:
+
+  ```powershell
+  curl http://localhost:8080/metrics
+  ```
+
+- Worker (ejemplo para nodeA en 9091):
+
+  ```powershell
+  curl http://localhost:9091/metrics
+  ```
+
+### Ejecutar benchmarks automáticos (3 fases: normal, fallo, recuperación)
+
+Desde la raíz del proyecto:
+
+```powershell
+java -cp .\target\classes cc4p1.clients.cli.BankCli bench-campaign --coordinator=localhost:8080 --worker=http://127.0.0.1:9091 --threads=4 --ops=loan --idClienteRange=200:400 --tasaAnual=0.25 --normalSec=20 --failSec=20 --recoverSec=20 --failMode=disk --outPrefix=bench_disk
 ```
 
-- Cuenta no encontrada:
+Esto genera archivos CSV y JSON por fase: `bench_disk_normal.csv`, `bench_disk_fail.csv`, `bench_disk_recover.csv`, y sus resúmenes `bench_disk_normal.json`, etc.
 
-```json
-{"ok":false,"error":"NOT_FOUND"}
+### Consultar arqueo (conservación de dinero)
+
+Para sumar los saldos de todas las cuentas (deduplicando por id):
+
+```powershell
+java -cp .\target\classes cc4p1.clients.cli.BankCli archeo
 ```
 
-- Nodo no disponible:
+O bien, especificando nodos:
 
-```json
-{"ok":false,"error":"NODOS_NO_DISPONIBLES"}
+```powershell
+java -cp .\target\classes cc4p1.clients.cli.BankCli archeo --paths=data/nodeA;data/nodeB --parts=3
 ```
 
----
+La salida muestra el total de dinero, cantidad de cuentas únicas y filas leídas.

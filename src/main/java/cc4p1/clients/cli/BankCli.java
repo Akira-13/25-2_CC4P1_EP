@@ -22,6 +22,12 @@ import java.util.UUID;
  * - loadgen --coordinator=host:port --threads=N --durationSec=S
  * --ops=transfer|loan|mixed --rate=Rps --min=MIN --max=MAX --delayMsMin=A
  * --delayMsMax=B --out=results.csv [--from=ID --to=ID | --accountRange=MIN:MAX]
+ * - bench-campaign --coordinator=host:port [--worker=http://host:port]
+ * --threads=N --ops=transfer|loan|mixed --idClienteRange=a:b --accountRange=a:b
+ * --rate=Rps --tasaAnual=VAL --normalSec=S1 --failSec=S2 --recoverSec=S3
+ * --failMode=disk|latency|none --latencyMs=MS --outPrefix=bench
+ * - archeo --paths=dir1;dir2;dir3 # suma saldos de cuentas en esas rutas
+ * (partitions)
  */
 public final class BankCli {
     public static void main(String[] args) throws Exception {
@@ -42,6 +48,28 @@ public final class BankCli {
                 } catch (Exception e) {
                     System.err.println("Error ejecutando loadgen: " + e.getMessage());
                     System.exit(6);
+                }
+            }
+            case "bench-campaign" -> {
+                String[] subArgs = new String[Math.max(0, args.length - 1)];
+                if (args.length > 1)
+                    System.arraycopy(args, 1, subArgs, 0, args.length - 1);
+                try {
+                    BenchCampaign.main(subArgs);
+                } catch (Exception e) {
+                    System.err.println("Error en bench-campaign: " + e.getMessage());
+                    System.exit(7);
+                }
+            }
+            case "archeo" -> {
+                String[] subArgs = new String[Math.max(0, args.length - 1)];
+                if (args.length > 1)
+                    System.arraycopy(args, 1, subArgs, 0, args.length - 1);
+                try {
+                    cc4p1.storage.tools.Archeo.main(subArgs);
+                } catch (Exception e) {
+                    System.err.println("Error en arqueo: " + e.getMessage());
+                    System.exit(8);
                 }
             }
             case "init-cuentas" -> {
@@ -344,6 +372,10 @@ public final class BankCli {
                 "\n  prestamo-crear <idCliente> <monto> [--tasa=0.25] --coordinator=host:port [--loanid=ID]" +
                 "\n  prestamo-estado <idCuenta> --coordinator=host:port" +
                 "\n  consultar-transacciones <idCuenta> --coordinator=host:port" +
-                "\n  loadgen --coordinator=host:port --threads=N --durationSec=S --ops=transfer|loan|mixed --rate=Rps --min=MIN --max=MAX --delayMsMin=A --delayMsMax=B --out=results.csv [--from=ID --to=ID | --accountRange=MIN:MAX]");
+                "\n  loadgen --coordinator=host:port --threads=N --durationSec=S --ops=transfer|loan|mixed --rate=Rps --min=MIN --max=MAX --delayMsMin=A --delayMsMax=B --out=results.csv [--from=ID --to=ID | --accountRange=MIN:MAX]"
+                +
+                "\n  bench-campaign --coordinator=host:port [--worker=http://host:port] --threads=N --ops=transfer|loan|mixed --idClienteRange=a:b --accountRange=a:b --rate=Rps --tasaAnual=VAL --normalSec=S1 --failSec=S2 --recoverSec=S3 --failMode=disk|latency|none --latencyMs=MS --outPrefix=bench"
+                +
+                "\n  archeo --paths=dir1;dir2;dir3");
     }
 }
