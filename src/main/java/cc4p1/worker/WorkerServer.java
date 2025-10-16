@@ -264,7 +264,8 @@ public final class WorkerServer {
     }
 
     final class TransferirHandler implements HttpHandler {
-        @Override public void handle(HttpExchange ex) throws IOException {
+        @Override
+        public void handle(HttpExchange ex) throws IOException {
             long t0 = before(ex);
             if (t0 == -1L) return;
             try {
@@ -273,14 +274,18 @@ public final class WorkerServer {
                     txFail.incrementAndGet();
                     return;
                 }
-                if (chaosDiskFail) { sendJson(ex, 500, "{\"ok\":false,\"error\":\"DISK_FAULT\"}"); txFail.incrementAndGet(); return; }
+                if (chaosDiskFail) {
+                    sendJson(ex, 500, "{\"ok\":false,\"error\":\"DISK_FAULT\"}");
+                    txFail.incrementAndGet();
+                    return;
+                }
 
-                var q = parseQuery(ex.getRequestURI());
+                Map<String, String> q = parseQuery(ex.getRequestURI());
                 String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                 Map<String, String> m = body.isBlank() ? new HashMap<>() : parseJsonMap(body);
 
-                long from = parseLongOr(m.get("from"), parseLongOr(q.get("origen"), -1));
-                long to   = parseLongOr(m.get("to"),   parseLongOr(q.get("destino"), -1));
+                long from   = parseLongOr(m.get("from"),   parseLongOr(q.get("origen"),  -1));
+                long to     = parseLongOr(m.get("to"),     parseLongOr(q.get("destino"), -1));
                 String txId = (m.containsKey("txId") ? m.get("txId") : q.get("txId"));
                 String montoStr = (m.containsKey("monto") ? m.get("monto") : q.get("monto"));
 
@@ -291,24 +296,34 @@ public final class WorkerServer {
                 }
 
                 var priorRam = txCache.get(txId);
-                if (priorRam != null) { sendJson(ex, 200, priorRam); txOk.incrementAndGet(); return; }
+                if (priorRam != null) {
+                    sendJson(ex, 200, priorRam);
+                    txOk.incrementAndGet();
+                    return;
+                }
 
                 BigDecimal monto;
                 try { monto = new BigDecimal(montoStr); }
-                catch (Exception bad) { sendJson(ex, 400, "{\"ok\":false,\"error\":\"BAD_AMOUNT\"}"); txFail.incrementAndGet(); return; }
+                catch (Exception bad) {
+                    sendJson(ex, 400, "{\"ok\":false,\"error\":\"BAD_AMOUNT\"}");
+                    txFail.incrementAndGet();
+                    return;
+                }
 
                 long a = Math.min(from, to), b = Math.max(from, to);
                 var la = lockFor(a);
                 var lb = lockFor(b);
-                la.lock();
-                lb.lock();
+                la.lock(); lb.lock();
                 try {
-                    String okPrevio = txIndex.get(txId);
-                    if (okPrevio != null) { cacheAndReply(ex, txId, 200, okPrevio); txOk.incrementAndGet(); return; }
-
+                    String okPrev = txIndex.get(txId);
+                    if (okPrev != null) {
+                        cacheAndReply(ex, txId, 200, okPrev);
+                        txOk.incrementAndGet();
+                        return;
+                    }
                     var txMaybe = storage.getTransaccionById(txId);
                     if (txMaybe.isPresent()) {
-                        String ok = buildOkJson(txId, from, to, monto);
+                        String ok = "{\"ok\":true,\"txId\":\"" + jsonEscape(txId) + "\",\"monto\":\"" + jsonEscape(monto.toString()) + "\"}";
                         cacheAndReply(ex, txId, 200, ok);
                         txOk.incrementAndGet();
                         return;
@@ -328,7 +343,8 @@ public final class WorkerServer {
                         return;
                     }
 
-                    appendTxLog("BEGIN", txId, "{\"from\":" + from + ",\"to\":" + to + ",\"monto\":\"" + jsonEscape(monto.toString()) + "\"}");
+                    appendTxLog("BEGIN", txId,
+                            "{\"from\":" + from + ",\"to\":" + to + ",\"monto\":\"" + jsonEscape(monto.toString()) + "\"}");
 
                     var accFromNew = withSaldo(accFrom, saldoFrom.subtract(monto));
                     var accToNew   = withSaldo(accTo,   balanceOf(accTo).add(monto));
@@ -336,8 +352,11 @@ public final class WorkerServer {
                     try {
                         storage.putCuenta((Account) accFromNew);
                         storage.putCuenta((Account) accToNew);
-                        Transaction tx = Transaction.debito(txId, from, monto); // usa tu factory/convenio
-                        storage.appendTransaccion(tx);
+
+                        // CSV: id_tx;id_cuenta;tipo;monto;fecha
+                        // Registramos dos asientos con el MISMO txId
+                        storage.appendTransaccion(Transaction.debito(txId, from, monto));  // tipo=DEBITO
+                        storage.appendTransaccion(Transaction.credito(txId, to,   monto));  // tipo=CREDITO
                     } catch (RuntimeException w) {
                         appendTxLog("FAIL", txId, "{\"error\":\"WRITE_FAILED\"}");
                         sendJson(ex, 500, "{\"ok\":false,\"error\":\"INTERNAL_WRITE_FAIL\"}");
@@ -345,21 +364,22 @@ public final class WorkerServer {
                         return;
                     }
 
-                    String ok = buildOkJson(txId, from, to, monto);
+                    String ok = "{\"ok\":true,\"txId\":\"" + jsonEscape(txId) + "\",\"monto\":\"" + jsonEscape(monto.toString()) + "\"}";
                     appendTxLog("OK", txId, ok);
                     txIndex.putIfAbsent(txId, ok);
                     cacheAndReply(ex, txId, 200, ok);
                     txOk.incrementAndGet();
-
                 } finally {
-                    lb.unlock();
-                    la.unlock();
+                    lb.unlock(); la.unlock();
                 }
             } finally {
                 after(t0);
             }
         }
     }
+    
+    
+
 
     final class PrestamoEstadoHandler implements HttpHandler {
         @Override public void handle(HttpExchange ex) throws IOException {
@@ -422,85 +442,76 @@ public final class WorkerServer {
     }
     
     final class ConsultarTransaccionesHandler implements HttpHandler {
-    @Override
-    public void handle(HttpExchange ex) throws IOException {
-        long t0 = before(ex);
-        try {
-            if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
-                sendJson(ex, 405, "{\"ok\":false,\"error\":\"METHOD_NOT_ALLOWED\"}");
-                readFail.incrementAndGet();
-                return;
-            }
-            if (chaosDiskFail) {
-                sendJson(ex, 500, "{\"ok\":false,\"error\":\"DISK_FAULT\"}");
-                readFail.incrementAndGet();
-                return;
-            }
-
-            Map<String, String> q = parseQuery(ex.getRequestURI());
-            String idStr = q.get("id");
-            if (idStr == null) {
-                sendJson(ex, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Falta parámetro id\"}");
-                readFail.incrementAndGet();
-                return;
-            }
-
-            long cuentaId;
-            try { cuentaId = Long.parseLong(idStr); }
-            catch (NumberFormatException e) {
-                sendJson(ex, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Parámetro id inválido\"}");
-                readFail.incrementAndGet();
-                return;
-            }
-
-            // Verifica que la cuenta exista
-            var accOpt = storage.getCuenta(cuentaId);
-            if (accOpt.isEmpty()) {
-                sendJson(ex, 404, "{\"ok\":false,\"error\":\"NOT_FOUND\",\"msg\":\"Cuenta inexistente\"}");
-                readFail.incrementAndGet();
-                return;
-            }
-
-            // Obtén transacciones: asumimos que devuelve Stream<Transaction>
-            List<Transaction> txs;
+        @Override
+        public void handle(HttpExchange ex) throws IOException {
+            long t0 = before(ex);
             try {
-                var stream = storage.getTransaccionesByCuenta(cuentaId); // Stream<Transaction>
-                txs = (stream == null) ? List.of() : stream.collect(Collectors.toList());
-            } catch (NoSuchMethodError | UnsupportedOperationException unused) {
-                // fallback si tu storage aún no expone ese método
-                txs = List.of();
-            }
+                if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
+                    sendJson(ex, 405, "{\"ok\":false,\"error\":\"METHOD_NOT_ALLOWED\"}");
+                    readFail.incrementAndGet();
+                    return;
+                }
+                if (chaosDiskFail) {
+                    sendJson(ex, 500, "{\"ok\":false,\"error\":\"DISK_FAULT\"}");
+                    readFail.incrementAndGet();
+                    return;
+                }
 
+                Map<String, String> q = parseQuery(ex.getRequestURI());
+                String idStr = q.get("id");
+                if (idStr == null) {
+                    sendJson(ex, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Falta parámetro id\"}");
+                    readFail.incrementAndGet();
+                    return;
+                }
 
-            StringBuilder sb = new StringBuilder(256);
-            sb.append("{\"ok\":true,\"cuenta\":").append(cuentaId).append(",\"transacciones\":[");
-            boolean first = true;
-            for (Transaction tx : txs) {
-                if (!first) sb.append(',');
-                first = false;
-                // Adapta getters a tu modelo de Transaction si difiere
-                String txId = String.valueOf(invokeAny(tx, "txId", "getTxId", "id", "getId"));
-                Object tipo = invokeAny(tx, "tipo", "getTipo", "type", "getType"); // "debito"/"credito"
-                Object monto = invokeAny(tx, "monto", "getMonto", "amount", "getAmount");
-                Object origen = invokeAny(tx, "from", "getFrom", "origen", "getOrigen");
-                Object destino = invokeAny(tx, "to", "getTo", "destino", "getDestino");
-                long ts = 0L;
-                Object oTs = invokeAny(tx, "timestamp", "getTimestamp", "ts", "getTs");
-                if (oTs instanceof Number n) ts = n.longValue();
+                long cuentaId;
+                try { cuentaId = Long.parseLong(idStr); }
+                catch (NumberFormatException e) {
+                    sendJson(ex, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Parámetro id inválido\"}");
+                    readFail.incrementAndGet();
+                    return;
+                }
 
-                sb.append('{')
-                  .append("\"txId\":").append(jsonValue(txId))
-                  .append(",\"tipo\":").append(jsonValue(String.valueOf(tipo)))
-                  .append(",\"monto\":").append(jsonValue(String.valueOf(monto)))
-                  .append(",\"from\":").append(jsonValue(String.valueOf(origen)))
-                  .append(",\"to\":").append(jsonValue(String.valueOf(destino)))
-                  .append(",\"ts\":").append(ts)
-                  .append('}');
-            }
-            sb.append("]}");
+                var accOpt = storage.getCuenta(cuentaId);
+                if (accOpt.isEmpty()) {
+                    sendJson(ex, 404, "{\"ok\":false,\"error\":\"NOT_FOUND\",\"msg\":\"Cuenta inexistente\"}");
+                    readFail.incrementAndGet();
+                    return;
+                }
 
-            sendJson(ex, 200, sb.toString());
-            readOk.incrementAndGet();
+                // FileStorage.getTransaccionesByCuenta → Stream<Transaction>
+                List<Transaction> txs;
+                try {
+                    var stream = storage.getTransaccionesByCuenta(cuentaId);
+                    txs = (stream == null) ? List.of() : stream.collect(Collectors.toList());
+                } catch (Throwable t) {
+                    txs = List.of();
+                }
+
+                StringBuilder sb = new StringBuilder(256);
+                sb.append("{\"ok\":true,\"cuenta\":").append(cuentaId).append(",\"transacciones\":[");
+                boolean first = true;
+                for (Transaction tx : txs) {
+                    if (!first) sb.append(',');
+                    first = false;
+
+                    String txId  = String.valueOf(invokeAny(tx, "idTx", "getIdTx", "txId", "getTxId", "id", "getId"));
+                    Object tipo  = invokeAny(tx, "tipo", "getTipo", "type", "getType");          // "DEBITO"/"CREDITO"
+                    Object monto = invokeAny(tx, "monto", "getMonto", "amount", "getAmount");
+                    Object fecha = invokeAny(tx, "fecha", "getFecha", "date", "getDate");        // String/LocalDate
+
+                    sb.append('{')
+                      .append("\"txId\":").append(jsonValue(txId))
+                      .append(",\"tipo\":").append(jsonValue(String.valueOf(tipo)))
+                      .append(",\"monto\":").append(jsonValue(String.valueOf(monto)))
+                      .append(",\"fecha\":").append(jsonValue(String.valueOf(fecha)))
+                      .append('}');
+                }
+                sb.append("]}");
+
+                sendJson(ex, 200, sb.toString());
+                readOk.incrementAndGet();
             } catch (Exception e) {
                 e.printStackTrace();
                 sendJson(ex, 500, "{\"ok\":false,\"error\":\"INTERNAL\"}");
@@ -510,6 +521,7 @@ public final class WorkerServer {
             }
         }
     }
+
     
     final class CrearPrestamoHandler implements HttpHandler {
     @Override
