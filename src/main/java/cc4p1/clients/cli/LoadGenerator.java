@@ -96,6 +96,8 @@ public final class LoadGenerator {
                             String url = String.format(Locale.ROOT,
                                     "http://%s/transferir_cuenta?origen=%d&destino=%d&monto=%s&txId=%s", coord, from,
                                     to, String.format(Locale.ROOT, "%.2f", amount), txId);
+                            System.out.printf("[DEBUG] TRANSFER op=%s from=%d to=%d amount=%.2f txId=%s url=%s\n", op,
+                                    from, to, amount, txId, url);
                             HttpRequest req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(5))
                                     .POST(HttpRequest.BodyPublishers.noBody()).build();
                             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
@@ -107,27 +109,73 @@ public final class LoadGenerator {
                             id = String.valueOf(loanId);
                             String url;
                             if ("worker".equalsIgnoreCase(target)) {
-                                long account = fromFixed > 0 ? fromFixed
+                                long cuentaId = fromFixed > 0 ? fromFixed
                                         : (accRangeBox[0] > 0 && accRangeBox[1] > 0
                                                 ? dist.uniformLong(accRangeBox[0], accRangeBox[1])
                                                 : 1);
                                 url = String.format(Locale.ROOT,
-                                        "http://%s/crear_prestamo?cuentaId=%d&monto=%s&loanId=%d", coord, account,
+                                        "http://%s/crear_prestamo?cuentaId=%d&monto=%s&loanId=%d", coord, cuentaId,
                                         String.format(Locale.ROOT, "%.2f", amount), loanId);
+                                System.out.printf(
+                                        "[DEBUG] LOAN (worker) op=%s cuentaId=%d amount=%.2f loanId=%d url=%s\n", op,
+                                        cuentaId, amount, loanId, url);
                             } else {
                                 long idCliente = idClienteFixed > 0 ? idClienteFixed
                                         : (idcRangeBox[0] > 0 && idcRangeBox[1] > 0
                                                 ? dist.uniformLong(idcRangeBox[0], idcRangeBox[1])
-                                                : (accRangeBox[0] > 0 && accRangeBox[1] > 0
-                                                        ? dist.uniformLong(accRangeBox[0], accRangeBox[1])
-                                                        : 1));
-                                url = String.format(Locale.ROOT,
-                                        "http://%s/crear_prestamo?idCliente=%d&monto=%s&tasaAnual=%s&loanId=%d",
-                                        coord, idCliente, String.format(Locale.ROOT, "%.2f", amount), tasaAnualStr,
-                                        loanId);
+                                                : 1);
+                                long cuentaId = fromFixed > 0 ? fromFixed
+                                        : (accRangeBox[0] > 0 && accRangeBox[1] > 0
+                                                ? dist.uniformLong(accRangeBox[0], accRangeBox[1])
+                                                : 0);
+                                if (cuentaId > 0) {
+                                    url = String.format(Locale.ROOT,
+                                            "http://%s/crear_prestamo?idCliente=%d&cuentaId=%d&monto=%s&tasaAnual=%s&loanId=%d",
+                                            coord, idCliente, cuentaId, String.format(Locale.ROOT, "%.2f", amount),
+                                            tasaAnualStr, loanId);
+                                    System.out.printf(
+                                            "[DEBUG] LOAN (coordinator) op=%s idCliente=%d cuentaId=%d amount=%.2f tasaAnual=%s loanId=%d url=%s\n",
+                                            op, idCliente, cuentaId, amount, tasaAnualStr, loanId, url);
+                                } else {
+                                    url = String.format(Locale.ROOT,
+                                            "http://%s/crear_prestamo?idCliente=%d&monto=%s&tasaAnual=%s&loanId=%d",
+                                            coord, idCliente, String.format(Locale.ROOT, "%.2f", amount), tasaAnualStr,
+                                            loanId);
+                                    System.out.printf(
+                                            "[DEBUG] LOAN (coordinator) op=%s idCliente=%d amount=%.2f tasaAnual=%s loanId=%d url=%s\n",
+                                            op, idCliente, amount, tasaAnualStr, loanId, url);
+                                }
                             }
                             HttpRequest req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(5))
                                     .POST(HttpRequest.BodyPublishers.noBody()).build();
+                            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+                            code = resp.statusCode();
+                            extra = trim(resp.body());
+                        } else if (which.equals("consultar")) {
+                            long idConsulta = fromFixed > 0 ? fromFixed
+                                    : (accRangeBox[0] > 0 && accRangeBox[1] > 0
+                                            ? dist.uniformLong(accRangeBox[0], accRangeBox[1])
+                                            : 1);
+                            op = "consultar";
+                            String url = String.format(Locale.ROOT,
+                                    "http://%s/consultar_cuenta?id=%d", coord, idConsulta);
+                            System.out.printf("[DEBUG] CONSULTAR op=%s idConsulta=%d url=%s\n", op, idConsulta, url);
+                            HttpRequest req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(5))
+                                    .GET().build();
+                            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+                            code = resp.statusCode();
+                            extra = trim(resp.body());
+                        } else if (which.equals("consultar-transacciones")) {
+                            long idTrans = accRangeBox[0] > 0 && accRangeBox[1] > 0
+                                    ? dist.uniformLong(accRangeBox[0], accRangeBox[1])
+                                    : 1;
+                            op = "consultar-transacciones";
+                            String url = String.format(Locale.ROOT,
+                                    "http://%s/consultar_transacciones?id=%d", coord, idTrans);
+                            System.out.printf("[DEBUG] CONSULTAR-TRANSACCIONES op=%s idTrans=%d url=%s\n", op, idTrans,
+                                    url);
+                            HttpRequest req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(5))
+                                    .GET().build();
                             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
                             code = resp.statusCode();
                             extra = trim(resp.body());
@@ -191,9 +239,14 @@ public final class LoadGenerator {
                 return "transfer";
             case "loan":
                 return "loan";
+            case "consultar":
+                return "consultar";
+            case "consultar-transacciones":
+                return "consultar-transacciones";
             case "mixed":
-            default:
                 return (System.nanoTime() & 1L) == 0L ? "transfer" : "loan";
+            default:
+                throw new IllegalArgumentException("Operación no soportada: " + ops);
         }
     }
 

@@ -340,10 +340,24 @@ Cada worker usará su propia carpeta de datos (data/nodeA, data/nodeB, etc). Pue
 
 ### 8.2. Ejecutar benchmarks automáticos (3 fases: normal, fallo, recuperación)
 
-Desde la raíz del proyecto:
+Ejemplo de benchmark para cada operación usando loadgen:
+
+**Consultas:**
 
 ```powershell
-  java -cp .\target\classes cc4p1.clients.cli.BankCli bench-campaign --coordinator=localhost:8080 --worker=http://127.0.0.1:9091 --threads=4 --ops=loan --idClienteRange=200:400 --tasaAnual=0.25 --normalSec=20 --failSec=20 --recoverSec=20 --failMode=disk --outPrefix=bench_disk
+java -cp .\target\classes cc4p1.clients.cli.BankCli loadgen --ops=consultar --coordinator=127.0.0.1:8080 --accountRange=1:100 --threads=4 --total=1000
+```
+
+**Transferencias:**
+
+```powershell
+java -cp .\target\classes cc4p1.clients.cli.BankCli loadgen --ops=transfer --coordinator=127.0.0.1:8080 --accountRange=1:100 --min=1 --max=20 --threads=4 --total=1000
+```
+
+**Préstamos:**
+
+```powershell
+java -cp .\target\classes cc4p1.clients.cli.BankCli loadgen --ops=loan --coordinator=127.0.0.1:8080 --idClienteRange=1:100 --min=1 --max=20 --tasaAnual=0.25 --threads=4 --total=1000
 ```
 
 Esto genera archivos CSV y JSON por fase: `bench_disk_normal.csv`, `bench_disk_fail.csv`, `bench_disk_recover.csv`, y sus resúmenes `bench_disk_normal.json`, etc.
