@@ -22,6 +22,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import cc4p1.storage.Partitioner;
 import java.util.concurrent.Executors;
+import cc4p1.coordinator.maintenance.AccountVerifier;
+import cc4p1.coordinator.maintenance.AccountRepairer;
+import cc4p1.coordinator.maintenance.VerifyResult;
+import cc4p1.coordinator.maintenance.RepairResult;
 
 public class CoordinatorServer {
 
@@ -49,6 +53,7 @@ public class CoordinatorServer {
         server.createContext("/routing", new RoutingHandler());
         server.createContext("/healthz", new HealthHandler());
         server.createContext("/metrics", new MetricsHandler());
+        server.createContext("/verify_replica", new VerifyReplicaHandler());
         server.setExecutor(Executors.newCachedThreadPool());
         server.start();
 
@@ -88,10 +93,12 @@ public class CoordinatorServer {
                 }
                 sb.append(']');
             }
-            sb.append("}});");
+            // FIX: remove stray characters that broke JSON ("});")
+            sb.append("}}");
             sendResponse(exchange, 200, sb.toString());
         }
     }
+// ...existing code...
 
     // --- Handlers ---
 
@@ -475,6 +482,67 @@ public class CoordinatorServer {
                     "{\"ok\":true,\"metrics\":{\"req_total\":%d,\"fallbacks_total\":%d,\"errors_total\":%d}}",
                     reqTotal.get(), fallbacksTotal.get(), errorsTotal.get());
             sendResponse(exchange, 200, response);
+        }
+    }
+
+    static class VerifyReplicaHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange ex) throws IOException {
+            if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                sendResponse(ex, 405, "{\"ok\":false,\"error\":\"Método no permitido\"}");
+                return;
+            }
+
+            Map<String,String> q = parseQuery(ex.getRequestURI());
+            String idStr = q.get("id");
+            if (idStr == null || idStr.isBlank()) {
+                sendResponse(ex, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"Falta parámetro id\"}");
+                return;
+            }
+
+            try {
+                long id = Long.parseLong(idStr.trim());
+                // partitioner expects int partitions in the rest of the code; cast explicitly
+                int partition = PARTITIONER.partForId((int) id);
+
+                List<NodeInfo> replicas = routingTable.getReplicas(partition);
+                // Defensive: routingTable may return null for unregistered partitions
+                if (replicas == null || replicas.isEmpty()) {
+                    String snap = String.valueOf(routingTable.snapshot());
+                    String body = String.format(
+                        "{\"ok\":false,\"error\":\"NODOS_NO_REGISTRADOS\",\"msg\":\"No hay réplicas registradas para la partición %d\",\"partition\":%d,\"routing_snapshot\":\"%s\"}",
+                        partition, partition, snap.replace("\"", "\\\""));
+                    System.err.println("[Coordinator] VerifyReplicaHandler: " + body);
+                    sendResponse(ex, 503, body);
+                    return;
+                }
+
+                // Verify consistency and possibly repair
+                AccountVerifier verifier = new AccountVerifier(replicas);
+                VerifyResult result = verifier.verify(id);
+
+                RepairResult repairResult = null;
+                if (result.needsRepair()) {
+                    AccountRepairer repairer = new AccountRepairer();
+                    repairResult = repairer.repair(result, id);
+                }
+
+                StringBuilder response = new StringBuilder();
+                response.append("{\"ok\":true,");
+                response.append("\"verify\":").append(result.toJson());
+                if (repairResult != null) {
+                    response.append(",\"repair\":").append(repairResult.toJson());
+                }
+                response.append("}");
+                sendResponse(ex, 200, response.toString());
+
+            } catch (NumberFormatException e) {
+                sendResponse(ex, 400, "{\"ok\":false,\"error\":\"VALIDACION\",\"msg\":\"id inválido\"}");
+            } catch (Exception e) {
+                errorsTotal.incrementAndGet();
+                System.err.println("[Coordinator] VerifyReplicaHandler ERROR: " + e.getMessage());
+                sendResponse(ex, 500, "{\"ok\":false,\"error\":\"INTERNAL\",\"msg\":\"" + e.getMessage() + "\"}");
+            }
         }
     }
 
