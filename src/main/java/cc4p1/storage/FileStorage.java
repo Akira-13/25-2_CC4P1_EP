@@ -118,6 +118,7 @@ public final class FileStorage implements Storage {
     if (!java.nio.file.Files.exists(file)) {
       return java.util.stream.Stream.empty();
     }
+
     try {
       // Cargamos todas las filas (excepto header) a memoria y devolvemos stream de la
       // lista.
@@ -154,10 +155,30 @@ public final class FileStorage implements Storage {
     return scanCuentasPartition(p).map(Account::saldo).reduce(BigDecimal.ZERO, BigDecimal::add);
   }
 
-  @Override
-  public Stream<Transaction> getTransaccionesByCuenta(long id) {
-    return Stream.empty();
-  }
+    @Override
+    public java.util.stream.Stream<cc4p1.model.Transaction> getTransaccionesByCuenta(long idCuenta) {
+        int p = partitioner.partForId(idCuenta);
+        java.nio.file.Path file = transaccionesFile(p);
+        if (!java.nio.file.Files.exists(file)) {
+            return java.util.stream.Stream.empty();
+        }
+        try {
+            // Cargamos todas las filas (excepto header) y filtramos por id_cuenta
+            var list = java.nio.file.Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8)
+                .stream()
+                .skip(1) // header
+                .filter(line -> !line.isBlank())
+                .map(line -> line.split(";"))
+                .map(cc4p1.model.Transaction::fromCsv)
+                .filter(tx -> tx.idCuenta() == idCuenta)
+                .toList();
+            return list.stream();
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+
 
   private static final String TRANSACCIONES_HEADER = "id_tx;id_cuenta;tipo;monto;fecha\n";
 

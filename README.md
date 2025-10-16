@@ -1,40 +1,34 @@
+
 # README
 
-## Generar datos
+## 1. Generar datos
 
 - Headers de cuentas: id_cuenta;id_cliente;saldo;fecha_apertura
 
-### SeedTool
+### 1.1. SeedTool
 
 Para generar datos, ejecutar `storage/tools/SeedTool.java`. Este generará 10k datos bancarios en `data/partitions/cuentas_px.csv`.
 
-## Particionar
+## 2. Particionar
 
-### SeedReplicated
+### 2.1. SeedReplicated
 
 - Para particionar los registros, ejecutar `storage/tools/SeedReplicated.java`.
 
-## Ejecución completa
+## 3. Ejecución completa
 
 - Para una ejecución completa (con registros inciales creados), ejecutar `storage/tools/ReplicatedDemo.java`. Este demo:
 
     1. Crea el particionador (Partitioner(3)) → te da p ∈ {0,1,2} para cada ID.
-
     2. Carga el mapeo de réplicas (ReplicaSelectorProperties) desde `data/metadata/replicas.properties` → para cada tabla y partición sabe cuál es el primario y las réplicas.
-
         - Una copia de un `replicas.properties` por defecto se encuentra en `resources/templates`
-
     3. Crea los “clientes de nodo” (LocalFileNodeStorageClient) → cada uno envuelve un FileStorage apuntando a una raíz distinta (`data/nodeA`, `data/nodeB`, `data/nodeC`).
-
     4. Arma la fachada de replicación (ReplicatedStorage) → implementa tu API Storage con:
-
         - get con failover (primario → réplica1 → réplica2),
-
         - put con fanout (a las 3),
-
         - scan leyendo solo 1 nodo por partición (evita duplicados).
 
-# Logs de transacción
+## 4. Logs de transacción
 
 - Headers de logs: id_tx;id_cuenta;tipo;monto;fecha
 - Log de transacciones particionado y replicado
@@ -50,7 +44,7 @@ Para generar datos, ejecutar `storage/tools/SeedTool.java`. Este generará 10k d
   - Programa de ejemplo que genera tres transacciones, una por cada partición (p0, p1, p2), verificando la replicación en los tres nodos.
   - Requiere datos iniciales creados.
 
-# Pagos y Préstamos
+## 5. Pagos y Préstamos
 
 - Préstamos (Loan)
   - Headers: id_prestamo;id_cliente;monto;tasa_anual;fecha;pendiente;estado
@@ -70,56 +64,92 @@ Para generar datos, ejecutar `storage/tools/SeedTool.java`. Este generará 10k d
 - LoanDemo
   - Programa que crea un préstamo replicado, registra dos pagos y calcula el saldo pendiente (ejemplo: préstamo de 1000, pagos de 300 y 200 → pendiente 500).
 
-# EJECUCIÓN DEL COORDINADOR
+## 6. EJECUCIÓN DEL COORDINADOR
 
-## 1. Generar datos iniciales (opcional)
+### 6.1. Generar datos iniciales (opcional)
 
 Antes de iniciar los servicios, puedes crear cuentas de prueba y los archivos necesarios usando el CLI:
 
 ```powershell
-cd src\main\java\cc4p1\clients\cli
-java BankCli.java init-cuentas 100
+java -cp .\target\classes cc4p1.clients.cli.BankCli init-cuentas 100
 ```
 
 Esto crea 100 cuentas distribuidas en los nodos y genera el archivo `data/metadata/replicas.properties`.
 
-## 2. Iniciar los servicios
+### 6.2. Iniciar los servicios
 
-### 2.1. Iniciar el coordinador
+#### 6.2.1. Iniciar el coordinador
 
 Desde la raíz del proyecto o desde `src/main/java/cc4p1/coordinator`:
 
 ```powershell
-cd src\main\java\cc4p1\coordinator
-java CoordinatorServer.java
+java -cp .\target\classes cc4p1.coordinator.CoordinatorServer
 ```
 
-### 2.2. Iniciar los workers-nodos
+#### 6.2.2. Iniciar los workers-nodos
 
 Desde la raíz del proyecto (o donde esté el target/classes generado), puedes iniciar cada worker con:
 
 ```powershell
-java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeA --host 127.0.0.1 --port 9091 --parts 3 --partitions "0,1,2" --coord http://127.0.0.1:8080
+java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeA --host 127.0.0.1 --port 9091 --parts 3 --partitions 0,1,2 --coord http://127.0.0.1:8080
 ```
 
 Para levantar varios nodos en la misma máquina, usa diferentes nodeId y puertos:
 
-- Nodo A:
+### 6.3. Consultas y operaciones principales con el CLI
+
+#### 6.3.1. Consultar cuentas
+
+Desde `src/main/java/cc4p1/clients/cli`:
+
+```powershell
+java -cp .\target\classes cc4p1.clients.cli.BankCli consultar 42 --coordinator=localhost:8080
+```
+
+#### 6.3.2. Realizar una transferencia
+
+Desde la raíz del proyecto o desde `src/main/java/cc4p1/clients/cli`:
+
+```powershell
+java -cp .\target\classes cc4p1.clients.cli.BankCli transferir 1 2 100 --coordinator=127.0.0.1:8080
+```
+
+Esto transfiere $100 de la cuenta 1 a la cuenta 2 usando el coordinador.
+
+#### 6.3.3. Crear un préstamo
+
+Desde la raíz del proyecto o desde `src/main/java/cc4p1/clients/cli`:
+
+```powershell
+java -cp .\target\classes cc4p1.clients.cli.BankCli prestamo-crear 1 500 --tasa=0.25 --coordinator=127.0.0.1:8080
+```
+
+Esto crea un préstamo de $500 para el cliente 1 con una tasa anual de 0.25.
+
+#### 6.3.4. Arqueo (conservación de dinero)
+
+Para sumar los saldos de todas las cuentas (deduplicando por id):
+
+```powershell
+java -cp .\target\classes cc4p1.clients.cli.BankCli archeo
+```
+
+O bien, especificando nodos:
+
+```powershell
+java -cp .\target\classes cc4p1.clients.cli.BankCli archeo --paths=data/nodeA;data/nodeB --parts=3
+```
+
+La salida muestra el total de dinero, cantidad de cuentas únicas y filas leídas.
 
   ```powershell
-  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeA --host 127.0.0.1 --port 9091 --parts 3 --partitions "0,1,2" --coord http://127.0.0.1:8080
-  ```
-
-- Nodo B:
-
-  ```powershell
-  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeB --host 127.0.0.1 --port 9092 --parts 3 --partitions "0,1,2" --coord http://127.0.0.1:8080
+  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeB --host 127.0.0.1 --port 9092 --parts 3 --partitions 0,1,2 --coord http://127.0.0.1:8080
   ```
 
 - Nodo C:
 
   ```powershell
-  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeC --host 127.0.0.1 --port 9093 --parts 3 --partitions "0,1,2" --coord http://127.0.0.1:8080
+  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeC --host 127.0.0.1 --port 9093 --parts 3 --partitions 0,1,2 --coord http://127.0.0.1:8080
   ```
 
 Si quieres repartir las particiones (sharding, sin replicación), puedes hacer:
@@ -127,36 +157,28 @@ Si quieres repartir las particiones (sharding, sin replicación), puedes hacer:
 - Nodo A (solo partición 0):
 
   ```powershell
-  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeA --host 127.0.0.1 --port 9091 --parts 3 --partitions "0" --coord http://127.0.0.1:8080
+  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeA --host 127.0.0.1 --port 9091 --parts 3 --partitions 0 --coord http://127.0.0.1:8080
   ```
 
 - Nodo B (solo partición 1):
 
   ```powershell
-  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeB --host 127.0.0.1 --port 9092 --parts 3 --partitions "1" --coord http://127.0.0.1:8080
+  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeB --host 127.0.0.1 --port 9092 --parts 3 --partitions 1 --coord http://127.0.0.1:8080
   ```
 
 - Nodo C (solo partición 2):
 
   ```powershell
-  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeC --host 127.0.0.1 --port 9093 --parts 3 --partitions "2" --coord http://127.0.0.1:8080
+  java -cp .\target\classes cc4p1.worker.WorkerMain --nodeId nodeC --host 127.0.0.1 --port 9093 --parts 3 --partitions 2 --coord http://127.0.0.1:8080
   ```
 
 Cada worker usará su propia carpeta de datos (data/nodeA, data/nodeB, etc). Puedes correr cada comando en una terminal diferente.
 
-## 4. Consultar cuentas usando el CLI
+## 7. Endpoints disponibles
 
-Desde `src/main/java/cc4p1/clients/cli`:
+### 7.1. Coordinator (Coordinador)
 
-```powershell
-java BankCli.java consultar 42 --coordinator=localhost:8080
-```
-
-## 5. Endpoints disponibles
-
-### Coordinator (Coordinador)
-
-#### Administración y monitoreo
+#### 7.1.1. Administración y monitoreo
 
 - **POST /register?host=&port=&partitions=&role=**
   - Registra un nodo worker en la tabla de ruteo.
@@ -173,7 +195,7 @@ java BankCli.java consultar 42 --coordinator=localhost:8080
   - Devuelve métricas del coordinador.
   - Respuesta: `{"ok":true,"metrics":{"req_total":100,"fallbacks_total":5,"errors_total":2}}`
 
-#### Operaciones de cuentas y préstamos
+#### 7.1.2. Operaciones de cuentas y préstamos
 
 - **GET /consultar_cuenta?id=ID**
   - Consulta una cuenta por ID (con failover automático).
@@ -193,9 +215,9 @@ java BankCli.java consultar 42 --coordinator=localhost:8080
   - Parámetros: `idCliente`, `monto`, `tasaAnual`, `loanId` (idempotencia)
   - Ejemplo: `POST http://localhost:8080/crear_prestamo?idCliente=42&monto=1000.00&tasaAnual=0.25&loanId=loan-001`
 
-### Worker (Nodo)
+### 7.2. Worker (Nodo)
 
-#### Operaciones principales
+#### 7.2.1. Operaciones principales
 
 - **GET /consultar_cuenta?id=ID**
   - Devuelve la cuenta local si existe.
@@ -208,7 +230,7 @@ java BankCli.java consultar 42 --coordinator=localhost:8080
 - **POST /crear_prestamo?idCliente=&monto=&tasaAnual=&loanId=**
   - Crea un préstamo local para un cliente.
 
-#### Monitoreo y caos
+#### 7.2.2. Monitoreo y caos
 
 - **GET /health** y **GET /healthz**
   - Verifica que el nodo está activo.
@@ -223,9 +245,9 @@ java BankCli.java consultar 42 --coordinator=localhost:8080
 - **GET /chaos/crash**
   - Simula un crash inmediato del proceso (mata el worker para pruebas de recuperación).
 
-## 6. Estadísticas, benchmarks y arqueo
+## 8. Estadísticas y benchmarks
 
-### Consultar métricas de los nodos
+### 8.1. Consultar métricas de los nodos
 
 - Coordinador:
 
@@ -239,28 +261,12 @@ java BankCli.java consultar 42 --coordinator=localhost:8080
   curl http://localhost:9091/metrics
   ```
 
-### Ejecutar benchmarks automáticos (3 fases: normal, fallo, recuperación)
+### 8.2. Ejecutar benchmarks automáticos (3 fases: normal, fallo, recuperación)
 
 Desde la raíz del proyecto:
 
 ```powershell
-java -cp .\target\classes cc4p1.clients.cli.BankCli bench-campaign --coordinator=localhost:8080 --worker=http://127.0.0.1:9091 --threads=4 --ops=loan --idClienteRange=200:400 --tasaAnual=0.25 --normalSec=20 --failSec=20 --recoverSec=20 --failMode=disk --outPrefix=bench_disk
+  java -cp .\target\classes cc4p1.clients.cli.BankCli bench-campaign --coordinator=localhost:8080 --worker=http://127.0.0.1:9091 --threads=4 --ops=loan --idClienteRange=200:400 --tasaAnual=0.25 --normalSec=20 --failSec=20 --recoverSec=20 --failMode=disk --outPrefix=bench_disk
 ```
 
 Esto genera archivos CSV y JSON por fase: `bench_disk_normal.csv`, `bench_disk_fail.csv`, `bench_disk_recover.csv`, y sus resúmenes `bench_disk_normal.json`, etc.
-
-### Consultar arqueo (conservación de dinero)
-
-Para sumar los saldos de todas las cuentas (deduplicando por id):
-
-```powershell
-java -cp .\target\classes cc4p1.clients.cli.BankCli archeo
-```
-
-O bien, especificando nodos:
-
-```powershell
-java -cp .\target\classes cc4p1.clients.cli.BankCli archeo --paths=data/nodeA;data/nodeB --parts=3
-```
-
-La salida muestra el total de dinero, cantidad de cuentas únicas y filas leídas.
