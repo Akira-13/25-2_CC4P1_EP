@@ -348,7 +348,7 @@ Desde la raíz del proyecto:
 
 Esto genera archivos CSV y JSON por fase: `bench_disk_normal.csv`, `bench_disk_fail.csv`, `bench_disk_recover.csv`, y sus resúmenes `bench_disk_normal.json`, etc.
 
-### 9. Chat de cliente
+## 9. Chat de cliente
 
 Para acceder a las funcionalidades del chat de cliente, ejecuta ```ClientChatMain``` luego de ```CoordinatorServer``` y ```WorkerMain```.
 
