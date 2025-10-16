@@ -360,4 +360,22 @@ java -cp .\target\classes cc4p1.clients.cli.BankCli loadgen --ops=transfer --coo
 java -cp .\target\classes cc4p1.clients.cli.BankCli loadgen --ops=loan --coordinator=127.0.0.1:8080 --idClienteRange=1:100 --min=1 --max=20 --tasaAnual=0.25 --threads=4 --total=1000
 ```
 
-Cada comando ejecuta la operación correspondiente en modo concurrente y permite obtener métricas de rendimiento y robustez del sistema. Los resultados se pueden guardar en archivos CSV y analizar para comparar el desempeño entre operaciones.
+Esto genera archivos CSV y JSON por fase: `bench_disk_normal.csv`, `bench_disk_fail.csv`, `bench_disk_recover.csv`, y sus resúmenes `bench_disk_normal.json`, etc.
+
+## 9. Chat de cliente
+
+Para acceder a las funcionalidades del chat de cliente, ejecuta ```ClientChatMain``` luego de ```CoordinatorServer``` y ```WorkerMain```.
+
+Lo primero que se debe hacer es acceder a tu cuenta, para ello escribe en la caja de texto ```Acceder <Tu número de cuenta>```. Puedes usar cualquier número pero se sugieren los números ```3, 222, 2``` dada la base de datos generada con los archivos demo que generan estos datos.
+
+El chat usa palabras clave así que basta con escribir cualquiera de estas palabras en el chat para obtener un resultado apropiado.
+
+```
+transaccion
+transacciones
+deudas
+prestamos
+saldo
+```
+
+Luego, para salir de tu cuenta, usa el comando ```Salir <Tu número de cuenta>``` y puedes volver a acceder a otra cuenta con el comando ```Acceder <Tu número de cuenta>```
