@@ -41,6 +41,6 @@ public final class WorkerMain {
             } catch (Exception e) {
                 System.out.println("[Worker " + nodeId + "] WARN: no pude registrar en coordinador: " + e.getMessage());
             }
-        }, 0, 30, TimeUnit.SECONDS);
+        }, 0, 60, TimeUnit.SECONDS);
     }
 }
