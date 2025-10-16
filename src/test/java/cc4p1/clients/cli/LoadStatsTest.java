@@ -12,7 +12,7 @@ public class LoadStatsTest {
         long start = 0L;
         for (int us = 1; us <= 100; us++) {
             long end = start + (us * 1_000L); // 1 microsegundo = 1000 ns
-            rep.add(new LoadTestReporter.ResultRow(start, end, 200, "op", "id"+us, 10.0, "ok"));
+            rep.add(new LoadTestReporter.ResultRow(start, end, 200, "op", "id" + us, 10.0, "ok"));
             start += 2_000_000L; // separar ventanas en ns para evitar solapes
         }
         rep.stop();
@@ -33,7 +33,8 @@ public class LoadStatsTest {
 
     @Test
     public void testUniformMeanAndStdDev() {
-        // Muestrea uniforme [50,500] y valida media y desviación dentro de tolerancias razonables
+        // Muestrea uniforme [50,500] y valida media y desviación dentro de tolerancias
+        // razonables
         DistributionUtils d = new DistributionUtils(42);
         int N = 20_000;
         double min = 50.0, max = 500.0;
@@ -53,7 +54,7 @@ public class LoadStatsTest {
 
         // Tolerancias: media dentro de 1% del rango; std dentro de 10%
         double meanTol = (max - min) * 0.01; // 1% del rango = 4.5
-        double stdTol = expectedStd * 0.10;  // 10%
+        double stdTol = expectedStd * 0.10; // 10%
 
         assertEquals(expectedMean, mean, meanTol, "media fuera de tolerancia");
         assertEquals(expectedStd, std, stdTol, "desviación estándar fuera de tolerancia");

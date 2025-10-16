@@ -19,7 +19,9 @@ import java.util.UUID;
  * [--loanid=ID]
  * - prestamo-estado <idCuenta> --coordinator=host:port
  * - consultar-transacciones <idCuenta> --coordinator=host:port
- * - loadgen --coordinator=host:port --threads=N --durationSec=S --ops=transfer|loan|mixed --rate=Rps --min=MIN --max=MAX --delayMsMin=A --delayMsMax=B --out=results.csv [--from=ID --to=ID | --accountRange=MIN:MAX]
+ * - loadgen --coordinator=host:port --threads=N --durationSec=S
+ * --ops=transfer|loan|mixed --rate=Rps --min=MIN --max=MAX --delayMsMin=A
+ * --delayMsMax=B --out=results.csv [--from=ID --to=ID | --accountRange=MIN:MAX]
  */
 public final class BankCli {
     public static void main(String[] args) throws Exception {
@@ -33,7 +35,8 @@ public final class BankCli {
             case "loadgen" -> {
                 // Pasa el resto de args directamente al LoadGenerator
                 String[] subArgs = new String[Math.max(0, args.length - 1)];
-                if (args.length > 1) System.arraycopy(args, 1, subArgs, 0, args.length - 1);
+                if (args.length > 1)
+                    System.arraycopy(args, 1, subArgs, 0, args.length - 1);
                 try {
                     LoadGenerator.main(subArgs);
                 } catch (Exception e) {

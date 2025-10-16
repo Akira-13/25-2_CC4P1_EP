@@ -20,7 +20,8 @@ public final class LoadTestReporter {
         public final double amount;
         public final String extra;
 
-        public ResultRow(long startNs, long endNs, int statusCode, String operation, String id, double amount, String extra) {
+        public ResultRow(long startNs, long endNs, int statusCode, String operation, String id, double amount,
+                String extra) {
             this.startNs = startNs;
             this.endNs = endNs;
             this.latencyMicros = Math.max(0L, (endNs - startNs) / 1_000);
@@ -43,8 +44,14 @@ public final class LoadTestReporter {
         public final double qps;
 
         public Summary(int total, int ok, int fail, long p50, long p90, long p95, long p99, double qps) {
-            this.total = total; this.ok = ok; this.fail = fail;
-            this.p50 = p50; this.p90 = p90; this.p95 = p95; this.p99 = p99; this.qps = qps;
+            this.total = total;
+            this.ok = ok;
+            this.fail = fail;
+            this.p50 = p50;
+            this.p90 = p90;
+            this.p95 = p95;
+            this.p99 = p99;
+            this.qps = qps;
         }
     }
 
@@ -52,17 +59,25 @@ public final class LoadTestReporter {
     private volatile long startNs;
     private volatile long endNs;
 
-    public void start() { this.startNs = System.nanoTime(); }
-    public void stop() { this.endNs = System.nanoTime(); }
+    public void start() {
+        this.startNs = System.nanoTime();
+    }
 
-    public void add(ResultRow row) { rows.add(row); }
+    public void stop() {
+        this.endNs = System.nanoTime();
+    }
+
+    public void add(ResultRow row) {
+        rows.add(row);
+    }
 
     public Summary summarize() {
         List<Long> lats = new ArrayList<>(rows.size());
         int ok = 0;
         for (ResultRow r : rows) {
             lats.add(r.latencyMicros);
-            if (r.statusCode >= 200 && r.statusCode < 300) ok++;
+            if (r.statusCode >= 200 && r.statusCode < 300)
+                ok++;
         }
         Collections.sort(lats);
         long p50 = pct(lats, 50);
@@ -77,8 +92,9 @@ public final class LoadTestReporter {
     }
 
     private static long pct(List<Long> xs, int p) {
-        if (xs.isEmpty()) return 0L;
-        int idx = Math.min(xs.size() - 1, Math.max(0, (int)Math.round((p / 100.0) * (xs.size() - 1))));
+        if (xs.isEmpty())
+            return 0L;
+        int idx = Math.min(xs.size() - 1, Math.max(0, (int) Math.round((p / 100.0) * (xs.size() - 1))));
         return xs.get(idx);
     }
 
@@ -93,9 +109,11 @@ public final class LoadTestReporter {
     }
 
     private static String safe(String s) {
-        if (s == null) return "";
+        if (s == null)
+            return "";
         String v = s.replace('"', '\'');
-        if (v.contains(",")) return '"' + v + '"';
+        if (v.contains(","))
+            return '"' + v + '"';
         return v;
     }
 }

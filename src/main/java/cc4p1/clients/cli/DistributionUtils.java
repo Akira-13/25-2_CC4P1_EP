@@ -21,8 +21,13 @@ public final class DistributionUtils {
      * Uniforme en [min, max]. Si min == max, retorna min.
      */
     public double uniform(double min, double max) {
-        if (max < min) { double t = min; min = max; max = t; }
-        if (max == min) return min;
+        if (max < min) {
+            double t = min;
+            min = max;
+            max = t;
+        }
+        if (max == min)
+            return min;
         return min + (max - min) * rnd.nextDouble();
     }
 
@@ -30,7 +35,8 @@ public final class DistributionUtils {
      * Normal con media y desviación estándar dadas. Sin truncar.
      */
     public double normal(double mean, double stdDev) {
-        if (stdDev <= 0) return mean;
+        if (stdDev <= 0)
+            return mean;
         return mean + stdDev * rnd.nextGaussian();
     }
 
@@ -38,7 +44,8 @@ public final class DistributionUtils {
      * Log-normal a partir de mu, sigma de la normal subyacente.
      */
     public double logNormal(double mu, double sigma) {
-        if (sigma <= 0) return Math.exp(mu);
+        if (sigma <= 0)
+            return Math.exp(mu);
         double g = mu + sigma * rnd.nextGaussian();
         return Math.exp(g);
     }
@@ -47,8 +54,13 @@ public final class DistributionUtils {
      * Uniforme entero en [min, max] inclusive.
      */
     public long uniformLong(long min, long max) {
-        if (max < min) { long t = min; min = max; max = t; }
-        if (max == min) return min;
+        if (max < min) {
+            long t = min;
+            min = max;
+            max = t;
+        }
+        if (max == min)
+            return min;
         long bound = (max - min) + 1;
         long v = Math.abs(rnd.nextLong());
         return min + (v % bound);
