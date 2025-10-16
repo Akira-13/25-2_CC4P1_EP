@@ -119,12 +119,12 @@ public void putCuenta(Account acc){
         throw new java.io.UncheckedIOException(e);
       }
     }
-    
+
     private Path cuentasFile(int p) {
       return base.resolve("partitions").resolve("cuentas_p" + p + ".csv");
     }
-    
-    
+
+
     private void ensureCuentasFileWithHeader(Path file) throws IOException {
       Files.createDirectories(file.getParent());
       if (!Files.exists(file)) {
@@ -135,7 +135,29 @@ public void putCuenta(Account acc){
 
   public BigDecimal arqueoSaldosPartition(int p) { return scanCuentasPartition(p).map(Account::saldo).reduce(BigDecimal.ZERO, BigDecimal::add); }
 
-  @Override public Stream<Transaction> getTransaccionesByCuenta(long id){ return Stream.empty(); }  
+    @Override
+    public java.util.stream.Stream<cc4p1.model.Transaction> getTransaccionesByCuenta(long idCuenta) {
+        int p = partitioner.partForId(idCuenta);
+        java.nio.file.Path file = transaccionesFile(p);
+        if (!java.nio.file.Files.exists(file)) {
+            return java.util.stream.Stream.empty();
+        }
+        try {
+            // Cargamos todas las filas (excepto header) y filtramos por id_cuenta
+            var list = java.nio.file.Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8)
+                .stream()
+                .skip(1) // header
+                .filter(line -> !line.isBlank())
+                .map(line -> line.split(";"))
+                .map(cc4p1.model.Transaction::fromCsv)
+                .filter(tx -> tx.idCuenta() == idCuenta)
+                .toList();
+            return list.stream();
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
 
   private static final String TRANSACCIONES_HEADER = "id_tx;id_cuenta;tipo;monto;fecha\n";
 
@@ -238,7 +260,7 @@ public void appendTransaccion(cc4p1.model.Transaction tx) {
       throw new UncheckedIOException(e);
     }
   }
-  
+
     // Headers
     private static final String PRESTAMOS_HEADER = "id_prestamo;id_cliente;monto;tasa_anual;fecha;pendiente;estado\n";
     private static final String PAGOS_HEADER     = "pay_id;ts;id_prestamo;monto\n";
@@ -246,7 +268,7 @@ public void appendTransaccion(cc4p1.model.Transaction tx) {
     // Rutas
     private java.nio.file.Path prestamosFile(int p){ return base.resolve("partitions").resolve("prestamos_p"+p+".csv"); }
     private java.nio.file.Path pagosFile(int p){ return base.resolve("partitions").resolve("pagos_p"+p+".csv"); }
-    
+
     // Inserta un préstamo (no-idempotente; asume idPrestamo único)
 public void putPrestamo(cc4p1.model.Loan loan){
   int p = partitioner.partForId(loan.idCliente()); // particionar por cliente
