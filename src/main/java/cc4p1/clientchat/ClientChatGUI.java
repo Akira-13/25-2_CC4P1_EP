@@ -6,12 +6,16 @@ package cc4p1.clientchat;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.swing.JOptionPane;
+import javax.swing.table.DefaultTableModel;
 
 /**
  *
  * @author Albert
  */
 public class ClientChatGUI extends javax.swing.JFrame {
+    
+    public String idAccount = "";
 
     /**
      * Creates new form ClientChatGUI
@@ -36,10 +40,8 @@ public class ClientChatGUI extends javax.swing.JFrame {
         jScrollPane2 = new javax.swing.JScrollPane();
         MessagesTA = new javax.swing.JTextArea();
         SendBtn = new javax.swing.JButton();
-        jScrollPane3 = new javax.swing.JScrollPane();
-        ResponseTA = new javax.swing.JTextArea();
         jScrollPane5 = new javax.swing.JScrollPane();
-        jTable2 = new javax.swing.JTable();
+        ResultsTable = new javax.swing.JTable();
 
         jTable1.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
@@ -56,21 +58,29 @@ public class ClientChatGUI extends javax.swing.JFrame {
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
         setTitle("Chat Cliente");
+        setResizable(false);
 
         ScreenTA.setEditable(false);
         ScreenTA.setColumns(20);
         ScreenTA.setFont(new java.awt.Font("Verdana", 0, 12)); // NOI18N
+        ScreenTA.setLineWrap(true);
         ScreenTA.setRows(5);
+        ScreenTA.setWrapStyleWord(true);
         jScrollPane1.setViewportView(ScreenTA);
 
         MessagesTA.setColumns(20);
         MessagesTA.setFont(new java.awt.Font("Verdana", 0, 12)); // NOI18N
         MessagesTA.setLineWrap(true);
         MessagesTA.setRows(5);
+        MessagesTA.addKeyListener(new java.awt.event.KeyAdapter() {
+            public void keyPressed(java.awt.event.KeyEvent evt) {
+                MessagesTAKeyPressed(evt);
+            }
+        });
         jScrollPane2.setViewportView(MessagesTA);
 
         SendBtn.setFont(new java.awt.Font("Verdana", 0, 12)); // NOI18N
-        SendBtn.setText("Send");
+        SendBtn.setText("Enviar");
         SendBtn.setFocusPainted(false);
         SendBtn.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
@@ -78,13 +88,7 @@ public class ClientChatGUI extends javax.swing.JFrame {
             }
         });
 
-        ResponseTA.setEditable(false);
-        ResponseTA.setColumns(20);
-        ResponseTA.setFont(new java.awt.Font("Verdana", 0, 12)); // NOI18N
-        ResponseTA.setRows(5);
-        jScrollPane3.setViewportView(ResponseTA);
-
-        jTable2.setModel(new javax.swing.table.DefaultTableModel(
+        ResultsTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
                 {null, null, null},
                 {null, null, null},
@@ -101,8 +105,8 @@ public class ClientChatGUI extends javax.swing.JFrame {
                 "Title 1", "Title 2", "Title 3"
             }
         ));
-        jTable2.setEnabled(false);
-        jScrollPane5.setViewportView(jTable2);
+        ResultsTable.setEnabled(false);
+        jScrollPane5.setViewportView(ResultsTable);
 
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
@@ -110,15 +114,15 @@ public class ClientChatGUI extends javax.swing.JFrame {
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
                 .addGap(23, 23, 23)
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                    .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 0, Short.MAX_VALUE)
-                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
-                        .addComponent(jScrollPane2, javax.swing.GroupLayout.DEFAULT_SIZE, 284, Short.MAX_VALUE)
-                        .addGap(18, 18, 18)
-                        .addComponent(SendBtn))
-                    .addComponent(jScrollPane1, javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addComponent(jScrollPane3))
-                .addContainerGap(29, Short.MAX_VALUE))
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 400, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
+                        .addComponent(jScrollPane5, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.PREFERRED_SIZE, 0, Short.MAX_VALUE)
+                        .addGroup(layout.createSequentialGroup()
+                            .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 315, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                            .addComponent(SendBtn))))
+                .addContainerGap(30, Short.MAX_VALUE))
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -129,11 +133,9 @@ public class ClientChatGUI extends javax.swing.JFrame {
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 58, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(SendBtn, javax.swing.GroupLayout.PREFERRED_SIZE, 58, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(12, 12, 12)
-                .addComponent(jScrollPane3, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(18, 18, 18)
-                .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 154, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(24, Short.MAX_VALUE))
+                .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 150, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addContainerGap(30, Short.MAX_VALUE))
         );
 
         pack();
@@ -155,48 +157,81 @@ public class ClientChatGUI extends javax.swing.JFrame {
             try{
                 
                 String response = MessageProcessor(clientMessage);                
-                ResponseTA.append("Respuesta: " + response + "\n");
                 
             }catch(Exception ex){
-                ResponseTA.append("Error: " + ex.getMessage() + "\n\n");
+                ScreenTA.append("Chat banco: Hubo un error al procesar el mensaje. Es posible que no estes autenticado :(");
             }
         }else{
-            ResponseTA.append("No se pudo procesar el mensaje");
+            ScreenTA.append("El mensaje esta vacio, prueba haciendo una consulta :)");
         }
     }//GEN-LAST:event_SendBtnActionPerformed
+
+    private void MessagesTAKeyPressed(java.awt.event.KeyEvent evt) {//GEN-FIRST:event_MessagesTAKeyPressed
+        // TODO add your handling code here:
+        if (evt.getKeyCode() == java.awt.event.KeyEvent.VK_ENTER && !evt.isShiftDown()) {
+            evt.consume();
+            SendBtn.doClick(); 
+        }
+    }//GEN-LAST:event_MessagesTAKeyPressed
     
     public String MessageProcessor(String message) throws Exception{
         Pattern pattern = Pattern.compile("(\\d+)");
         Matcher matcher = pattern.matcher(message);
                 
-        if (!matcher.find()) {
-            ScreenTA.append("Chat banco: El formato de mensajes es incorrecto");        
-            return "No se pudo procesar el mensaje";
-        }
+        //if (!matcher.find()) {
+        //    ScreenTA.append("Chat banco: El formato de mensajes es incorrecto \n");        
+        //   return "";
+        //}
         
-        String idAccount = matcher.group(1);
-        
+
         message = message.toLowerCase();
         
         String response = "";
         
-        if (message.contains("saldo")) {
-            ScreenTA.append("Chat banco: Imprimiendo saldo de la cuenta " + idAccount + "\n");
+        if (message.contains("acceder") || message.contains("acceso")){
+            if(matcher.find()){
+                idAccount = matcher.group(1);
+                ScreenTA.setText("");
+                ScreenTA.append("Chat banco: Usuario " + idAccount + " autenticado\n");
+            }else{
+                ScreenTA.append("Chat banco: El formato de mensajes es incorrecto \n");
+            }
+        }else if (message.contains("salir")){
+            if(matcher.find()){
+                ScreenTA.append("Chat banco: Usuario " + idAccount + " ha salido de la sesión\n");
+                idAccount = "";
+            }else{
+                ScreenTA.append("Chat banco: El formato de mensajes es incorrecto \n");
+            }
+        }
+        else if (message.contains("saldo")) {
             response = HttpHandler.sendGet("http://localhost:8080/consultar_cuenta?id=" + idAccount);
             response = JsonResponseProcessor(response, "saldo");
-            response = "El saldo de la cuenta " + idAccount + " es " + response;
-            
+            ScreenTA.append("Chat banco: El saldo de la cuenta " + idAccount + " es " + response + "\n");
+
         } else if (message.contains("transaccion") || message.contains("transacciones")) {
-            ScreenTA.append("Chat banco: Imprimiendo transacciones de la cuenta " + idAccount + "\n");
             response = HttpHandler.sendGet("http://localhost:8080/consultar_transacciones?id=" + idAccount);
+            response = JsonResponseProcessor(response, "transaccion");
+            if(response == "0"){
+                ScreenTA.append("Chat banco: La cuenta " + idAccount + " no registra transacciones \n");
+            }else if(response == "error"){
+                ScreenTA.append("Chat banco: Hubo un error al procesar la solicitud \n");       
+            }else{
+                ScreenTA.append("Chat banco: Imprimiendo " + response + " transacciones de la cuenta " + idAccount + "\n");
+            }
             
-        } else if (message.contains("prestamo") || message.contains("préstamo") || message.contains("prestamos")) {
-            ScreenTA.append("Chat banco: Imprimiendo lista de préstamos de la cuenta " + idAccount + "\n");
-            response = HttpHandler.sendGet("http://localhost:8080/consultar_prestamos?id=" + idAccount);
-            
+        } else if (message.contains("prestamo") || message.contains("préstamo") || message.contains("prestamos") || message.contains("deuda") || message.contains("deudas")) {
+            response = HttpHandler.sendGet("http://localhost:8080/estado_prestamo?id=" + idAccount);
+            response = JsonResponseProcessor(response, "prestamo");
+            if(response == "0"){
+                ScreenTA.append("Chat banco: La cuenta " + idAccount + " no registra préstamos \n");
+            }else if(response == "error"){
+                ScreenTA.append("Chat banco: Hubo un error al procesar la solicitud \n");       
+            }else{
+                ScreenTA.append("Chat banco: Imprimiendo " + response + " préstamos de la cuenta " + idAccount + "\n");
+            }
         } else {
-            ScreenTA.append("Chat banco: No reconozco la solicitud. Prueba con palabras como 'saldo', 'transacciones' o 'préstamos'.\n");            
-            response = "No se pudo realizar la consulta";
+            ScreenTA.append("Chat banco: No reconozco la solicitud. Prueba con palabras como 'acceder <id>', 'saldo', 'transacciones' o 'préstamos'.\n");            
         }
         
         return response;
@@ -213,10 +248,123 @@ public class ClientChatGUI extends javax.swing.JFrame {
                 String saldo = jsonText.substring(saldoIndex + 9, endIndex - 1).replace("\"", "").trim();
                 response = saldo;
                 break;
+                
             case "transaccion":
-                break;
+                try {
+                    // Buscamos el array de transacciones
+                    int startArray = jsonText.indexOf("[");
+                    int endArray = jsonText.lastIndexOf("]");
+
+                    // Validamos que existan los corchetes
+                    if (startArray == -1 || endArray == -1) {
+                        ResultsTable.setModel(new DefaultTableModel());
+                        return "0";
+                    }
+
+                    // Extraemos el contenido del array
+                    String arrayText = jsonText.substring(startArray + 1, endArray).trim();
+
+                    // Verificamos si está vacío
+                    if (arrayText.isEmpty()) {
+                        ResultsTable.setModel(new DefaultTableModel());
+                        return "0";
+                    }
+
+                    // Dividimos los objetos por '},' para aislar cada transacción
+                    String[] transObjects = arrayText.split("\\},");
+
+                    // Validamos contenido vacío o incorrecto
+                    if (transObjects.length == 0 || arrayText.equals("{}")) {
+                        ResultsTable.setModel(new DefaultTableModel());
+                        return "0";
+                    }
+                    
+                    // Creamos modelo de tabla para colocar los datos
+                    DefaultTableModel model = new DefaultTableModel();
+                    model.addColumn("ID");
+                    model.addColumn("TIPO");
+                    model.addColumn("MONTO");
+                    model.addColumn("FECHA");
+
+                    // Procesamos cada objeto de transacción
+                    for (String obj : transObjects) {
+                        // Aseguramos que termine con '}'
+                        if (!obj.trim().endsWith("}")) obj = obj + "}";
+
+                        // Extraemos campos manualmente
+                        String txId = extractValue(obj, "txId");
+                        String tipo = extractValue(obj, "tipo");
+                        String monto = extractValue(obj, "monto");
+                        String fecha = extractValue(obj, "fecha");
+
+                        // Agregamos la fila a la tabla
+                        model.addRow(new Object[]{txId, tipo, monto, fecha});
+                    }
+
+                    // Mostramos en JTable
+                    ResultsTable.setModel(model);
+                    response = Integer.toString(transObjects.length);
+
+                } catch (Exception e) {
+                    response = "error";
+                }
+                break;   
+                
             case "prestamo":
-                break;
+                try {
+                    // Buscamos el array de préstamos
+                    int startArray = jsonText.indexOf("[");
+                    int endArray = jsonText.lastIndexOf("]");
+
+                    if (startArray == -1 || endArray == -1) {
+                        ResultsTable.setModel(new DefaultTableModel());
+                        return "0";
+                    }
+
+                    String arrayText = jsonText.substring(startArray + 1, endArray).trim();
+
+                    // Comprobamos si el array está vacío
+                    if (arrayText.isEmpty()) {
+                        ResultsTable.setModel(new DefaultTableModel());
+                        return "0";
+                    }
+
+                    // Dividimos los objetos por '},'
+                    String[] prestamoObjects = arrayText.split("\\},");
+
+                    // Si por algún motivo el array contiene solo espacios o llaves vacías
+                    if (prestamoObjects.length == 0 || arrayText.equals("{}")) {
+                        ResultsTable.setModel(new DefaultTableModel());
+                        return "0";
+                    }
+                    
+                    // Definimos las columnas de la tabla
+                    DefaultTableModel model = new DefaultTableModel();
+                    model.addColumn("ID");
+                    model.addColumn("MONTO");
+                    model.addColumn("PENDIENTE");
+                    model.addColumn("ESTADO");
+
+                    // Procesamos cada préstamo
+                    for (String obj : prestamoObjects) {
+                        if (!obj.trim().endsWith("}")) obj = obj + "}";
+
+                        String idPrestamo = extractValue(obj, "idPrestamo");
+                        String monto = extractValue(obj, "monto");
+                        String pendiente = extractValue(obj, "pendiente");
+                        String estado = extractValue(obj, "estado");
+
+                        model.addRow(new Object[]{idPrestamo, monto, pendiente, estado});
+                    }
+
+                    // Mostramos en JTable
+                    ResultsTable.setModel(model);
+                    response = Integer.toString(prestamoObjects.length);
+
+                } catch (Exception e) {
+                    response = "error";
+                }
+                break;        
             default:
                 break;
         }
@@ -224,21 +372,35 @@ public class ClientChatGUI extends javax.swing.JFrame {
         return response;
     }
     
+    private String extractValue(String json, String key) {
+    try {
+        int keyIndex = json.indexOf("\"" + key + "\":");
+        if (keyIndex == -1) return "";
+        
+        int start = json.indexOf(":", keyIndex) + 1;
+        int end = json.indexOf(",", start);
+        if (end == -1) end = json.indexOf("}", start);
+        
+        String value = json.substring(start, end).replace("\"", "").trim();
+        return value;
+    } catch (Exception e) {
+        return "";
+    }
+}
+    
     /**
      * @param args the command line arguments
      */
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JTextArea MessagesTA;
-    private javax.swing.JTextArea ResponseTA;
+    private javax.swing.JTable ResultsTable;
     private javax.swing.JTextArea ScreenTA;
     private javax.swing.JButton SendBtn;
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JScrollPane jScrollPane2;
-    private javax.swing.JScrollPane jScrollPane3;
     private javax.swing.JScrollPane jScrollPane4;
     private javax.swing.JScrollPane jScrollPane5;
     private javax.swing.JTable jTable1;
-    private javax.swing.JTable jTable2;
     // End of variables declaration//GEN-END:variables
 }
