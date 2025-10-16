@@ -37,6 +37,7 @@ public final class LoadGenerator {
         long dMin = Long.parseLong(opt(args, "--delayMsMin", "0"));
         long dMax = Long.parseLong(opt(args, "--delayMsMax", "0"));
         String out = opt(args, "--out", "load_results.csv");
+        String summaryJson = opt(args, "--summaryJson", "");
         long fromFixed = Long.parseLong(opt(args, "--from", "0"));
         long toFixed = Long.parseLong(opt(args, "--to", "0"));
         String accRange = opt(args, "--accountRange", "0:0");
@@ -171,6 +172,15 @@ public final class LoadGenerator {
             System.out.println("CSV escrito en: " + out);
         } catch (Exception e) {
             System.err.println("No se pudo escribir CSV: " + e);
+        }
+
+        if (!summaryJson.isBlank()) {
+            try {
+                reporter.writeSummaryJson(new java.io.File(summaryJson), summary);
+                System.out.println("Resumen JSON escrito en: " + summaryJson);
+            } catch (Exception e) {
+                System.err.println("No se pudo escribir resumen JSON: " + e);
+            }
         }
     }
 
