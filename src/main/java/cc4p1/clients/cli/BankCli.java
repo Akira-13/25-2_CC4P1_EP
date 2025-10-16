@@ -19,6 +19,7 @@ import java.util.UUID;
  * [--loanid=ID]
  * - prestamo-estado <idCuenta> --coordinator=host:port
  * - consultar-transacciones <idCuenta> --coordinator=host:port
+ * - loadgen --coordinator=host:port --threads=N --durationSec=S --ops=transfer|loan|mixed --rate=Rps --min=MIN --max=MAX --delayMsMin=A --delayMsMax=B --out=results.csv [--from=ID --to=ID | --accountRange=MIN:MAX]
  */
 public final class BankCli {
     public static void main(String[] args) throws Exception {
@@ -29,6 +30,17 @@ public final class BankCli {
 
         String cmd = args[0];
         switch (cmd) {
+            case "loadgen" -> {
+                // Pasa el resto de args directamente al LoadGenerator
+                String[] subArgs = new String[Math.max(0, args.length - 1)];
+                if (args.length > 1) System.arraycopy(args, 1, subArgs, 0, args.length - 1);
+                try {
+                    LoadGenerator.main(subArgs);
+                } catch (Exception e) {
+                    System.err.println("Error ejecutando loadgen: " + e.getMessage());
+                    System.exit(6);
+                }
+            }
             case "init-cuentas" -> {
                 int n = args.length > 1 ? Integer.parseInt(args[1]) : 10_000;
                 System.out.println("Sembrando " + n + " cuentas (replicadas) ...");
@@ -328,6 +340,7 @@ public final class BankCli {
                 "\n  transferir <origen> <destino> <monto> --coordinator=host:port [--txid=ID]" +
                 "\n  prestamo-crear <idCliente> <monto> [--tasa=0.25] --coordinator=host:port [--loanid=ID]" +
                 "\n  prestamo-estado <idCuenta> --coordinator=host:port" +
-                "\n  consultar-transacciones <idCuenta> --coordinator=host:port");
+                "\n  consultar-transacciones <idCuenta> --coordinator=host:port" +
+                "\n  loadgen --coordinator=host:port --threads=N --durationSec=S --ops=transfer|loan|mixed --rate=Rps --min=MIN --max=MAX --delayMsMin=A --delayMsMax=B --out=results.csv [--from=ID --to=ID | --accountRange=MIN:MAX]");
     }
 }
