@@ -212,8 +212,85 @@ Cada worker usará su propia carpeta de datos (data/nodeA, data/nodeB, etc). Pue
   - Ejemplo: `GET http://localhost:8080/estado_prestamo?id=42`
 - **POST /crear_prestamo?idCliente=&monto=&tasaAnual=&loanId=**
   - Crea un nuevo préstamo para un cliente (con failover inteligente).
-  - Parámetros: `idCliente`, `monto`, `tasaAnual`, `loanId` (idempotencia)
-  - Ejemplo: `POST http://localhost:8080/crear_prestamo?idCliente=42&monto=1000.00&tasaAnual=0.25&loanId=loan-001`
+  - Parámetros: `idCliente`, `monto`, `tasaAnual` (0-1, ej: 0.25 = 25%), `loanId` (único para idempotencia)
+  - Ejemplo:
+    `POST http://localhost:8080/crear_prestamo?idCliente=42&monto=1000.00&tasaAnual=0.25&loanId=loan-001`
+  - Respuesta: `{"ok":true,"idPrestamo":1}` o `{"ok":false,"error":"CLIENTE_NO_EXISTE"}`
+
+#### Mantenimiento y Verificación
+
+- **POST /verify_replica?id=ID**
+  - Verifica la consistencia de una cuenta entre todas sus réplicas y repara automáticamente si encuentra inconsistencias.
+  - Parámetros: `id` (ID de la cuenta a verificar)
+  - Proceso:
+    1. Calcula la partición de la cuenta
+    2. Obtiene todas las réplicas registradas para esa partición
+    3. Verifica la consistencia de los datos entre réplicas usando `AccountVerifier`
+    4. Si detecta inconsistencias, ejecuta reparación automática usando `AccountRepairer`
+  - Ejemplo:
+    `POST http://localhost:8080/verify_replica?id=42`
+  - Respuestas:
+    - **Consistente (sin reparación necesaria)**:
+
+      ```json
+      {
+        "ok": true,
+        "verify": {
+          "consistent": true,
+          "replicas_checked": 3,
+          "primary_data": {"id":42,"saldo":"1000.00",...}
+        }
+      }
+      ```
+
+    - **Inconsistente (con reparación exitosa)**:
+
+      ```json
+      {
+        "ok": true,
+        "verify": {
+          "consistent": false,
+          "replicas_checked": 3,
+          "inconsistencies": ["nodeB: saldo mismatch", "nodeC: missing record"]
+        },
+        "repair": {
+          "success": true,
+          "repaired_nodes": ["nodeB", "nodeC"],
+          "source": "nodeA"
+        }
+      }
+      ```
+
+    - **Error (sin réplicas disponibles)**:
+
+      ```json
+      {
+        "ok": false,
+        "error": "NODOS_NO_REGISTRADOS",
+        "msg": "No hay réplicas registradas para la partición 1",
+        "partition": 1
+      }
+      ```
+
+  - **Uso desde CLI**:
+
+    ```powershell
+    java BankCli.java verify-replica 42 --coordinator=localhost:8080
+    ```
+
+#### Monitoreo
+
+- **GET /routing**
+  - Devuelve el mapeo actual de particiones y nodos registrados.
+  - Respuesta: `{"ok":true,"routing":{"0":[{"host":"localhost","port":9001,"priority":0},...]}}`
+
+- **GET /healthz**
+  - Verifica que el coordinador está activo.
+  - Respuesta: `{"ok":true,"msg":"coordinator up"}`
+
+- **GET /metrics**
+  - Devuelve métricas del coordinador.
+  - Respuesta: `{"ok":true,"metrics":{"req_total":100,"fallbacks_total":5,"errors_total":2}}`
 
 ### 7.2. Worker (Nodo)
 

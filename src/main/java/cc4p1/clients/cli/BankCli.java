@@ -356,6 +356,47 @@ public final class BankCli {
                     System.exit(4);
                 }
             }
+            case "verify-replica" -> {
+                if (args.length < 2) {
+                    System.err.println("Uso: verify-replica <id> --coordinator=host:port");
+                    System.exit(2);
+                }
+                String coord = null;
+                String idStr = null;
+                for (int i = 1; i < args.length; i++) {
+                    String a = args[i];
+                    if (a.startsWith("--coordinator=")) {
+                        coord = a.substring("--coordinator=".length());
+                        continue;
+                    }
+                    if (!a.startsWith("--") && idStr == null)
+                        idStr = a;
+                }
+                if (coord == null || idStr == null) {
+                    System.err.println("Faltan argumentos. Uso: verify-replica <id> --coordinator=host:port");
+                    System.exit(2);
+                }
+                long id;
+                try {
+                    id = Long.parseLong(idStr);
+                } catch (NumberFormatException nfe) {
+                    System.err.println("id inválido");
+                    System.exit(2);
+                    return;
+                }
+                String url = String.format("http://%s/verify_replica?id=%d", coord, id);
+                HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofMillis(1000)).build();
+                HttpRequest req = HttpRequest.newBuilder().POST(HttpRequest.BodyPublishers.noBody())
+                        .uri(URI.create(url)).timeout(Duration.ofSeconds(5)).build();
+                try {
+                    HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
+                    System.out.println(resp.body());
+                    System.exit(resp.statusCode() == 200 ? 0 : 5);
+                } catch (IOException | InterruptedException e) {
+                    System.err.println("Error verificando réplica: " + e.getMessage());
+                    System.exit(4);
+                }
+            }
             default -> {
                 System.err.println("Comando desconocido: " + cmd);
                 usage();
@@ -372,6 +413,8 @@ public final class BankCli {
                 "\n  prestamo-crear <idCliente> <monto> [--tasa=0.25] --coordinator=host:port [--loanid=ID]" +
                 "\n  prestamo-estado <idCuenta> --coordinator=host:port" +
                 "\n  consultar-transacciones <idCuenta> --coordinator=host:port" +
+                "\n  verify-replica <id> --coordinator=host:port" +
+
                 "\n  loadgen --coordinator=host:port --threads=N --durationSec=S --ops=transfer|loan|mixed --rate=Rps --min=MIN --max=MAX --delayMsMin=A --delayMsMax=B --out=results.csv [--from=ID --to=ID | --accountRange=MIN:MAX]"
                 +
                 "\n  bench-campaign --coordinator=host:port [--worker=http://host:port] --threads=N --ops=transfer|loan|mixed --idClienteRange=a:b --accountRange=a:b --rate=Rps --tasaAnual=VAL --normalSec=S1 --failSec=S2 --recoverSec=S3 --failMode=disk|latency|none --latencyMs=MS --outPrefix=bench"
